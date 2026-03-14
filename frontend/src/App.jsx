@@ -25,13 +25,20 @@ export default function App() {
       setAuthed(true);
       sessionStorage.setItem('tp_pw', password);
     } catch (e) {
-      setAuthErr('Incorrect password.');
+      // Clear cached password on failure so user gets a clean login
+      sessionStorage.removeItem('tp_pw');
       setAuthed(false);
+      setPw('');
+      setAuthErr('Incorrect password. Please type it again.');
     }
     setLoading(false);
   }, []);
 
-  useEffect(() => { if (pw) loadAll(pw); }, []); // eslint-disable-line
+  useEffect(() => {
+    // Only auto-login if we have a stored password — clear it first to avoid stale cache
+    const stored = sessionStorage.getItem('tp_pw');
+    if (stored) loadAll(stored);
+  }, []); // eslint-disable-line
 
   function handleLogin(e) {
     e.preventDefault();

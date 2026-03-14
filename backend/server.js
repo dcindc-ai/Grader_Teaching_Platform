@@ -1,13 +1,22 @@
-require('dotenv').config({ path: '../.env' });
+const path = require('path');
+// Load .env with absolute path — works regardless of which directory node is run from
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+
 const express = require('express');
 const cors = require('cors');
-const path = require('path');
 const fs = require('fs');
 
 require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// Verify password is loaded on startup
+if (!process.env.ADMIN_PASSWORD) {
+  console.error('ERROR: ADMIN_PASSWORD not set. Check your .env file at:', path.join(__dirname, '..', '.env'));
+  process.exit(1);
+}
+console.log('Password loaded OK — length:', process.env.ADMIN_PASSWORD.length);
 
 ['./data', './uploads', './uploads/materials', './uploads/dev'].forEach(d => {
   if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
