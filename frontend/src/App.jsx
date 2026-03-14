@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { getCourses, getAssignments, getStudents, getGrades, getCorpusStats } from './api.js';
+import { getCourses, getCorpusStats } from './api.js';
 import CourseShell from './components/CourseShell.jsx';
 import CorpusView from './components/CorpusView.jsx';
+import DevTab from './components/DevTab.jsx';
 import './App.css';
 
 export default function App() {
@@ -11,7 +12,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [courses, setCourses] = useState([]);
   const [activeCourse, setActiveCourse] = useState(null);
-  const [view, setView] = useState('course'); // 'course' | 'corpus'
+  const [view, setView] = useState('course');
   const [stats, setStats] = useState(null);
 
   const loadAll = useCallback(async (password) => {
@@ -48,6 +49,7 @@ export default function App() {
   function addCourse(course) {
     setCourses(c => [...c, course]);
     setActiveCourse(course.id);
+    setView('course');
   }
 
   function updateCourse(updated) {
@@ -85,7 +87,6 @@ export default function App() {
 
   return (
     <div className="app-shell" style={{ '--course-color': course?.color || '#4f8ef7' }}>
-      {/* Top bar */}
       <header className="topbar">
         <div className="topbar-left">
           <span className="topbar-mark">TP</span>
@@ -101,24 +102,31 @@ export default function App() {
             >
               <span className="course-dot" style={{ background: c.color }} />
               {c.name}
-              <span style={{ fontSize: 10, color: 'var(--text3)', marginLeft: 4 }}>{c.institution?.split(' ').map(w=>w[0]).join('')}</span>
+              <span style={{ fontSize: 10, color: 'var(--text3)', marginLeft: 4 }}>
+                {c.institution?.split(' ').map(w => w[0]).join('')}
+              </span>
             </button>
           ))}
           <button
             className={`course-tab${view === 'corpus' ? ' active' : ''}`}
-            style={{ '--c': '#888' }}
             onClick={() => setView('corpus')}
           >
             Corpus
             {stats && <span className="badge" style={{ marginLeft: 6 }}>{stats.totalGrades}</span>}
           </button>
-          <button className="course-tab add-course" onClick={() => {
+          <button
+            className={`course-tab${view === 'dev' ? ' active' : ''}`}
+            style={{ color: view === 'dev' ? 'var(--amber)' : undefined }}
+            onClick={() => setView('dev')}
+          >
+            🔧 Dev
+          </button>
+          <button className="course-tab add-course" onClick={async () => {
             const name = prompt('Course short name (e.g. GEOG 662):');
             if (!name) return;
-            import('./api.js').then(api => {
-              api.createCourse({ name, fullName: name, institution: '', term: '', color: '#4f8ef7' }, pw)
-                .then(addCourse);
-            });
+            const { createCourse } = await import('./api.js');
+            const course = await createCourse({ name, fullName: name, institution: '', term: '', color: '#4f8ef7' }, pw);
+            addCourse(course);
           }}>+ Course</button>
         </nav>
         <div className="topbar-right">
@@ -126,7 +134,6 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main content */}
       <div className="app-body">
         {view === 'course' && course && (
           <CourseShell
@@ -138,7 +145,16 @@ export default function App() {
           />
         )}
         {view === 'corpus' && (
-          <CorpusView password={pw} stats={stats} onRefreshStats={() => getCorpusStats(pw).then(setStats)} />
+          <CorpusView
+            password={pw}
+            stats={stats}
+            onRefreshStats={() => getCorpusStats(pw).then(setStats)}
+          />
+        )}
+        {view === 'dev' && (
+          <div style={{ padding: '24px 28px', height: '100%', overflow: 'hidden' }}>
+            <DevTab password={pw} />
+          </div>
         )}
       </div>
     </div>
