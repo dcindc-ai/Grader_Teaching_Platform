@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS assignments (
   display_order INTEGER DEFAULT 99,
   description TEXT,
   rubric TEXT,
+  rubric_criteria TEXT,
   created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -195,7 +196,8 @@ function parseAssignment(r) {
   if (!r) return null;
   return { id:r.id, courseId:r.course_id, name:r.name, type:r.type,
     maxScore:r.max_score, order:r.display_order, description:r.description,
-    rubric:r.rubric, createdAt:r.created_at };
+    rubric:r.rubric, rubricCriteria:r.rubric_criteria ? JSON.parse(r.rubric_criteria) : null,
+    createdAt:r.created_at };
 }
 
 function parseGrade(r) {

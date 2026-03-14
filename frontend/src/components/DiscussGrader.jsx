@@ -1,38 +1,47 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { updateAssignment } from '../api.js';
 
 const BASE = import.meta.env.PROD ? '' : 'http://localhost:3001';
 
+const RATING_ORDER = ['Accomplished', 'Proficient', 'Needs Improvement', 'Unacceptable'];
 const RATING_COLORS = {
-  'Accomplished': 'var(--green)',
-  'Proficient': 'var(--accent)',
-  'Needs Improvement': 'var(--amber)',
-  'Unacceptable': 'var(--red)'
-};
-
-const RATING_BG = {
-  'Accomplished': 'rgba(22,163,74,0.08)',
-  'Proficient': 'rgba(37,99,235,0.08)',
-  'Needs Improvement': 'rgba(217,119,6,0.08)',
-  'Unacceptable': 'rgba(220,38,38,0.08)'
+  'Accomplished': '#16A34A',
+  'Proficient': '#2563EB',
+  'Needs Improvement': '#D97706',
+  'Unacceptable': '#DC2626'
 };
 
 export default function DiscussGrader({ course, password, assignments }) {
-  const [step, setStep] = useState('setup'); // setup | grading | review
-  const [discussionQuestion, setDiscussionQuestion] = useState(course.discussionDefaultQuestion || '');
+  const [selectedAssignment, setSelectedAssignment] = useState(null);
   const [rubricCriteria, setRubricCriteria] = useState([]);
-  const [totalMax, setTotalMax] = useState(75);
-  const [assignmentId, setAssignmentId] = useState(assignments?.[0]?.id || '');
+  const [totalMax, setTotalMax] = useState(0);
   const [studentName, setStudentName] = useState('');
   const [submission, setSubmission] = useState('');
   const [grading, setGrading] = useState(false);
   const [result, setResult] = useState(null);
-  const [overrides, setOverrides] = useState({}); // criterionId -> {points, comment}
+  const [scores, setScores] = useState({});
+  const [comments, setComments] = useState({});
+  const [feedback, setFeedback] = useState('');
   const [copied, setCopied] = useState('');
-  const [csvError, setCsvError] = useState('');
+  const [importingRubric, setImportingRubric] = useState(false);
   const csvRef = useRef();
 
-  async function importRubric(csvText) {
-    setCsvError('');
+  // When assignment changes, load its saved rubric
+  useEffect(() => {
+    if (selectedAssignment?.rubricCriteria) {
+      setRubricCriteria(selectedAssignment.rubricCriteria);
+      setTotalMax(selectedAssignment.rubricCriteria.reduce((s, c) => s + c.maxPoints, 0));
+    }
+  }, [selectedAssignment?.id]);
+
+  // Default to first discussion assignment
+  useEffect(() => {
+    const disc = assignments?.find(a => a.type === 'discussion') || assignments?.[0];
+    if (disc) setSelectedAssignment(disc);
+  }, [assignments?.length]);
+
+  async function importRubricCSV(csvText) {
+    setImportingRubric(true);
     try {
       const r = await fetch(`${BASE}/api/discussgrade/parse-rubric`, {
         method: 'POST',
@@ -40,16 +49,27 @@ export default function DiscussGrader({ course, password, assignments }) {
         body: JSON.stringify({ csv: csvText })
       });
       const d = await r.json();
-      if (d.error) { setCsvError(d.error); return; }
+      if (d.error) throw new Error(d.error);
       setRubricCriteria(d.criteria);
       setTotalMax(d.totalMax);
+
+      // Save rubric to assignment so it loads automatically next time
+      if (selectedAssignment) {
+        await updateAssignment(selectedAssignment.id, {
+          ...selectedAssignment,
+          rubricCriteria: d.criteria,
+          maxScore: d.totalMax
+        }, password);
+        setSelectedAssignment(a => ({ ...a, rubricCriteria: d.criteria, maxScore: d.totalMax }));
+      }
     } catch (e) {
-      setCsvError(e.message);
+      alert('Rubric import error: ' + e.message);
     }
+    setImportingRubric(false);
   }
 
   async function gradeSubmission() {
-    if (!submission.trim()) return;
+    if (!submission.trim() || !rubricCriteria.length) return;
     setGrading(true);
     setResult(null);
     try {
@@ -58,9 +78,9 @@ export default function DiscussGrader({ course, password, assignments }) {
         headers: { 'x-admin-password': password, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           courseId: course.id,
-          assignmentId,
+          assignmentId: selectedAssignment?.id,
           studentName,
-          discussionQuestion,
+          discussionQuestion: selectedAssignment?.description || course.discussionDefaultQuestion || '',
           submission,
           rubricCriteria,
           instructorBio: course.instructorBio
@@ -68,48 +88,50 @@ export default function DiscussGrader({ course, password, assignments }) {
       });
       const d = await r.json();
       if (d.error) throw new Error(d.error);
+
       setResult(d);
-      // Initialize overrides from result
-      const init = {};
+      setFeedback(d.instructorParagraph || '');
+
+      // Initialize scores and comments from AI suggestions
+      const initScores = {}, initComments = {};
       d.criteriaGrades?.forEach(cg => {
-        init[cg.criterionName] = { points: cg.suggestedPoints, comment: cg.comment };
+        initScores[cg.criterionName] = cg.suggestedPoints;
+        initComments[cg.criterionName] = cg.comment;
       });
-      setOverrides(init);
-      setStep('review');
+      setScores(initScores);
+      setComments(initComments);
     } catch (e) {
-      alert('Error: ' + e.message);
+      alert('Grading error: ' + e.message);
     }
     setGrading(false);
   }
 
-  function updateOverride(criterionName, field, value) {
-    setOverrides(o => ({ ...o, [criterionName]: { ...o[criterionName], [field]: value } }));
+  function getTotal() {
+    return Object.values(scores).reduce((s, v) => s + (parseFloat(v) || 0), 0);
   }
 
-  function getFinalTotal() {
-    if (!result) return 0;
-    return result.criteriaGrades?.reduce((sum, cg) => {
-      const pts = parseFloat(overrides[cg.criterionName]?.points ?? cg.suggestedPoints) || 0;
-      return sum + pts;
-    }, 0).toFixed(1);
+  function getPct() {
+    return totalMax > 0 ? Math.round(getTotal() / totalMax * 100) : 0;
   }
 
-  function buildCanvasText() {
-    if (!result) return '';
+  function totalColor() {
+    const p = getPct();
+    return p >= 90 ? '#16A34A' : p >= 80 ? '#2563EB' : p >= 70 ? '#D97706' : '#DC2626';
+  }
+
+  function buildCanvasOutput() {
     const lines = [];
-    lines.push(`Student: ${studentName}`);
-    lines.push(`Total: ${getFinalTotal()} / ${totalMax}`);
-    lines.push('');
-    result.criteriaGrades?.forEach(cg => {
-      const pts = overrides[cg.criterionName]?.points ?? cg.suggestedPoints;
-      const comment = overrides[cg.criterionName]?.comment ?? cg.comment;
-      lines.push(`${cg.criterionName}: ${pts} / ${cg.maxPoints || 15} pts`);
-      if (comment) lines.push(`Comment: ${comment}`);
+    rubricCriteria.forEach(c => {
+      const pts = scores[c.name] || 0;
+      const comment = comments[c.name] || '';
+      lines.push(`${c.name}: ${pts}/${c.maxPoints} pts`);
+      if (comment) lines.push(comment);
       lines.push('');
     });
-    if (result.instructorParagraph) {
-      lines.push('--- Instructor Feedback ---');
-      lines.push(result.instructorParagraph);
+    lines.push(`Total: ${getTotal().toFixed(1)} / ${totalMax} pts`);
+    lines.push('');
+    if (feedback) {
+      lines.push(feedback);
     }
     return lines.join('\n');
   }
@@ -117,254 +139,212 @@ export default function DiscussGrader({ course, password, assignments }) {
   function copy(text, key) {
     navigator.clipboard.writeText(text);
     setCopied(key);
-    setTimeout(() => setCopied(''), 2000);
+    setTimeout(() => setCopied(''), 2500);
   }
 
-  function reset() {
-    setStep('setup');
+  function nextStudent() {
     setStudentName('');
     setSubmission('');
     setResult(null);
-    setOverrides({});
+    setScores({});
+    setComments({});
+    setFeedback('');
   }
 
+  const hasRubric = rubricCriteria.length > 0;
+  const hasResult = result !== null;
+
   return (
-    <div style={{ maxWidth: 800 }}>
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+    <div style={{ maxWidth: 820 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
         <div>
-          <div className="page-title">Discussion Grader</div>
-          <div className="page-sub">Rubric-based grading for discussion posts · Copy results to Canvas</div>
+          <div style={{ fontSize: 19, fontWeight: 700 }}>Grade Discussion</div>
+          <div style={{ fontSize: 13, color: 'var(--text2)' }}>Rubric grading · Canvas-ready output</div>
         </div>
-        {step === 'review' && (
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={reset} style={{ fontSize: 12 }}>← New student</button>
-          </div>
-        )}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {/* Assignment selector */}
+          <select value={selectedAssignment?.id || ''} style={{ fontSize: 13 }}
+            onChange={e => {
+              const a = assignments?.find(x => x.id === e.target.value);
+              setSelectedAssignment(a || null);
+            }}>
+            {assignments?.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+          {/* Rubric import */}
+          <input ref={csvRef} type="file" accept=".csv" style={{ display: 'none' }}
+            onChange={async e => {
+              const file = e.target.files[0];
+              if (!file) return;
+              const text = await file.text();
+              importRubricCSV(text);
+              e.target.value = '';
+            }} />
+          <button onClick={() => csvRef.current.click()} disabled={importingRubric} style={{ fontSize: 12 }}>
+            {importingRubric ? 'Importing…' : hasRubric ? '↺ Update rubric' : '↑ Import rubric CSV'}
+          </button>
+        </div>
       </div>
 
-      {/* ── Step 1: Setup ─────────────────────────────────────────── */}
-      {step === 'setup' && (
+      {/* Rubric status */}
+      {hasRubric && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+          {rubricCriteria.map(c => (
+            <span key={c.id} style={{ fontSize: 11, padding: '3px 10px', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 20, color: 'var(--text2)' }}>
+              {c.name.split(':').pop().trim()} · {c.maxPoints}pts
+            </span>
+          ))}
+          <span style={{ fontSize: 11, padding: '3px 10px', background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.2)', borderRadius: 20, color: 'var(--accent)', fontWeight: 600 }}>
+            Total: {totalMax} pts
+          </span>
+        </div>
+      )}
+
+      {!hasRubric && (
+        <div style={{ padding: '20px', textAlign: 'center', border: '1.5px dashed var(--border2)', borderRadius: 8, marginBottom: 16, color: 'var(--text3)', fontSize: 13 }}>
+          Import a rubric CSV to get started. The rubric saves automatically and loads next time.
+        </div>
+      )}
+
+      {/* Student + submission */}
+      <div className="two-col" style={{ gap: 14, alignItems: 'start' }}>
         <div>
-          {/* Rubric import */}
-          <div className="card" style={{ marginBottom: 14 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <div style={{ fontWeight: 600 }}>
-                Grading Rubric
-                {rubricCriteria.length > 0 && (
-                  <span className="pill-green" style={{ marginLeft: 10, fontSize: 11 }}>
-                    {rubricCriteria.length} criteria · {totalMax} pts total
-                  </span>
-                )}
-              </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <input ref={csvRef} type="file" accept=".csv" style={{ display: 'none' }}
-                  onChange={async e => {
-                    const file = e.target.files[0];
-                    if (!file) return;
-                    const text = await file.text();
-                    importRubric(text);
-                  }} />
-                <button style={{ fontSize: 12 }} onClick={() => csvRef.current.click()}>
-                  ↑ Import from Canvas CSV
-                </button>
-              </div>
-            </div>
-
-            {csvError && <div style={{ fontSize: 12, color: 'var(--red)', marginBottom: 8 }}>{csvError}</div>}
-
-            {rubricCriteria.length === 0 ? (
-              <div style={{ fontSize: 13, color: 'var(--text3)', padding: '16px 0', textAlign: 'center' }}>
-                Import your rubric CSV from Canvas (Rubrics → Export) or add criteria manually below.
-              </div>
-            ) : (
-              <div>
-                {rubricCriteria.map((c, i) => (
-                  <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: i < rubricCriteria.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                    <span style={{ fontSize: 13 }}>{c.name}</span>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      {c.ratings.map(r => (
-                        <span key={r.name} style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: RATING_BG[r.name] || 'var(--bg3)', color: RATING_COLORS[r.name] || 'var(--text2)' }}>
-                          {r.name} ({r.points})
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+          <div className="field">
+            <label>Student name</label>
+            <input type="text" value={studentName} onChange={e => setStudentName(e.target.value)}
+              placeholder="First and last name" />
           </div>
-
-          {/* Discussion question */}
-          <div className="card" style={{ marginBottom: 14 }}>
-            <div style={{ fontWeight: 600, marginBottom: 8 }}>Discussion Question</div>
-            <textarea rows={5} value={discussionQuestion} onChange={e => setDiscussionQuestion(e.target.value)}
-              placeholder="Paste the discussion question here…" style={{ fontSize: 13, lineHeight: 1.6 }} />
+          <div className="field" style={{ marginBottom: 0 }}>
+            <label>Paste student submission</label>
+            <textarea rows={14} value={submission} onChange={e => setSubmission(e.target.value)}
+              placeholder="Paste the student's full post here — initial post plus any peer responses they wrote…"
+              style={{ fontSize: 13, lineHeight: 1.65, resize: 'vertical' }} />
           </div>
-
-          {/* Assignment selector */}
-          {assignments?.length > 0 && (
-            <div className="field" style={{ marginBottom: 14 }}>
-              <label>Save grades to assignment</label>
-              <select value={assignmentId} onChange={e => setAssignmentId(e.target.value)}>
-                <option value="">Don't save</option>
-                {assignments.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-              </select>
-            </div>
-          )}
-
-          <button className="primary" style={{ width: '100%', padding: 12, fontSize: 14 }}
-            onClick={() => setStep('grading')}
-            disabled={rubricCriteria.length === 0}>
-            Continue to Grade Student →
+          <button className="primary" style={{ width: '100%', padding: 12, fontSize: 14, fontWeight: 600, marginTop: 10 }}
+            onClick={gradeSubmission}
+            disabled={grading || !submission.trim() || !hasRubric}>
+            {grading ? 'Grading…' : 'Grade this submission →'}
           </button>
-          {rubricCriteria.length === 0 && (
-            <div style={{ fontSize: 12, color: 'var(--text3)', textAlign: 'center', marginTop: 6 }}>Import a rubric first</div>
-          )}
-        </div>
-      )}
-
-      {/* ── Step 2: Enter submission ──────────────────────────────── */}
-      {step === 'grading' && (
-        <div>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 14, alignItems: 'center' }}>
-            <button className="ghost" style={{ fontSize: 12 }} onClick={() => setStep('setup')}>← Back to setup</button>
-            <span style={{ fontSize: 12, color: 'var(--text2)' }}>Rubric: {rubricCriteria.length} criteria · {totalMax} pts</span>
-          </div>
-
-          <div className="card" style={{ marginBottom: 12 }}>
-            <div className="field">
-              <label>Student name</label>
-              <input type="text" value={studentName} onChange={e => setStudentName(e.target.value)}
-                placeholder="First and last name" />
-            </div>
-            <div className="field" style={{ marginBottom: 0 }}>
-              <label>Student submission (initial post + peer responses)</label>
-              <textarea rows={16} value={submission} onChange={e => setSubmission(e.target.value)}
-                placeholder="Paste the student's full discussion submission here — initial post and any peer responses…"
-                style={{ fontSize: 13, lineHeight: 1.65 }} />
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="primary" style={{ flex: 1, padding: 12, fontSize: 14, fontWeight: 600 }}
-              onClick={gradeSubmission} disabled={grading || !submission.trim()}>
-              {grading ? 'Grading…' : 'Grade this submission →'}
-            </button>
-          </div>
           {grading && (
-            <div style={{ marginTop: 10, padding: '10px 14px', background: 'rgba(37,99,235,0.06)', border: '1px solid rgba(37,99,235,0.2)', borderRadius: 8, fontSize: 12, color: 'var(--accent)' }}>
-              Analyzing submission against {rubricCriteria.length} rubric criteria…
+            <div style={{ marginTop: 8, fontSize: 12, color: 'var(--accent)', textAlign: 'center' }}>
+              Analyzing against {rubricCriteria.length} rubric criteria…
             </div>
           )}
         </div>
-      )}
 
-      {/* ── Step 3: Review & edit grades ─────────────────────────── */}
-      {step === 'review' && result && (
+        {/* Results */}
         <div>
-          {/* Score header */}
-          <div className="card" style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 18 }}>{studentName || 'Student'}</div>
-              <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>{result.overallSummary}</div>
+          {!hasResult && !grading && (
+            <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>
+              <div style={{ fontSize: 28, marginBottom: 10 }}>📋</div>
+              Paste the student's post and click Grade.<br />
+              Results appear here ready to copy into Canvas.
             </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontFamily: 'var(--mono)', fontSize: 32, fontWeight: 700, color: parseFloat(getFinalTotal()) / totalMax >= 0.9 ? 'var(--green)' : parseFloat(getFinalTotal()) / totalMax >= 0.8 ? 'var(--accent)' : 'var(--amber)' }}>
-                {getFinalTotal()}
-              </div>
-              <div style={{ fontSize: 13, color: 'var(--text2)' }}>out of {totalMax}</div>
-            </div>
-          </div>
+          )}
 
-          {/* Instructor paragraph */}
-          <div style={{ marginBottom: 16, padding: '14px 16px', background: 'rgba(37,99,235,0.04)', border: '2px solid rgba(37,99,235,0.2)', borderRadius: 10 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--accent)' }}>
-                Instructor feedback
-              </div>
-              <button onClick={() => copy(result.instructorParagraph, 'para')} style={{
-                fontSize: 12, padding: '4px 12px', fontWeight: 500,
-                background: copied === 'para' ? 'var(--accent)' : 'transparent',
-                color: copied === 'para' ? '#fff' : 'var(--accent)',
-                border: '1px solid var(--accent)'
+          {hasResult && (
+            <>
+              {/* Final grade banner */}
+              <div style={{
+                padding: '14px 16px', marginBottom: 12,
+                background: `${totalColor()}12`,
+                border: `2px solid ${totalColor()}40`,
+                borderRadius: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center'
               }}>
-                {copied === 'para' ? '✓ Copied' : 'Copy'}
-              </button>
-            </div>
-            <p style={{ fontSize: 14, lineHeight: 1.8, fontStyle: 'italic', margin: 0 }}>
-              {result.instructorParagraph}
-            </p>
-          </div>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: totalColor() }}>Final Grade</div>
+                  <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>{studentName || 'Student'}</div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <span style={{ fontFamily: 'var(--mono)', fontSize: 36, fontWeight: 700, color: totalColor() }}>
+                    {getTotal().toFixed(1)}
+                  </span>
+                  <span style={{ fontSize: 16, color: 'var(--text2)' }}> / {totalMax}</span>
+                  <div style={{ fontSize: 12, color: totalColor(), fontWeight: 500 }}>{getPct()}%</div>
+                </div>
+              </div>
 
-          {/* Per-criterion grades */}
-          {result.criteriaGrades?.map((cg, i) => {
-            const pts = overrides[cg.criterionName]?.points ?? cg.suggestedPoints;
-            const comment = overrides[cg.criterionName]?.comment ?? cg.comment;
-            const criterion = rubricCriteria.find(c => c.name === cg.criterionName);
-            const maxPts = criterion?.maxPoints || 15;
+              {/* Criterion scores */}
+              {rubricCriteria.map(c => {
+                const pts = scores[c.name] ?? 0;
+                const comment = comments[c.name] ?? '';
+                const cg = result.criteriaGrades?.find(x => x.criterionName === c.name);
+                return (
+                  <div key={c.id} className="card" style={{ marginBottom: 8 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>
+                      {c.name.includes(':') ? c.name.split(':').pop().trim() : c.name}
+                    </div>
 
-            return (
-              <div key={i} className="card" style={{ marginBottom: 10 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600, fontSize: 14 }}>{cg.criterionName}</div>
-                    <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
-                      {criterion?.ratings.map(r => (
-                        <button key={r.name} onClick={() => updateOverride(cg.criterionName, 'points', r.points)}
+                    {/* Rating buttons */}
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
+                      {c.ratings.sort((a,b) => b.points - a.points).map(r => (
+                        <button key={r.name}
+                          onClick={() => setScores(s => ({ ...s, [c.name]: r.points }))}
                           style={{
                             fontSize: 11, padding: '4px 10px', borderRadius: 4,
-                            background: parseFloat(pts) === r.points ? (RATING_BG[r.name] || 'var(--bg3)') : 'var(--bg)',
-                            color: parseFloat(pts) === r.points ? (RATING_COLORS[r.name] || 'var(--text)') : 'var(--text2)',
-                            border: `1px solid ${parseFloat(pts) === r.points ? (RATING_COLORS[r.name] || 'var(--border2)') : 'var(--border2)'}`,
-                            fontWeight: parseFloat(pts) === r.points ? 600 : 400
+                            background: parseFloat(pts) === r.points ? `${RATING_COLORS[r.name]}18` : 'var(--bg)',
+                            color: parseFloat(pts) === r.points ? RATING_COLORS[r.name] : 'var(--text2)',
+                            border: `1px solid ${parseFloat(pts) === r.points ? RATING_COLORS[r.name] : 'var(--border2)'}`,
+                            fontWeight: parseFloat(pts) === r.points ? 700 : 400
                           }}>
-                          {r.name} ({r.points})
+                          {r.name} · {r.points}
                         </button>
                       ))}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
+                        <input type="number" value={pts} min="0" max={c.maxPoints} step="0.5"
+                          onChange={e => setScores(s => ({ ...s, [c.name]: parseFloat(e.target.value) || 0 }))}
+                          style={{ width: 52, fontSize: 15, fontWeight: 700, fontFamily: 'var(--mono)', textAlign: 'center', padding: '3px 4px' }} />
+                        <span style={{ fontSize: 12, color: 'var(--text3)' }}>/ {c.maxPoints}</span>
+                      </div>
                     </div>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 16, flexShrink: 0 }}>
-                    <input type="number" value={pts} min="0" max={maxPts} step="0.5"
-                      onChange={e => updateOverride(cg.criterionName, 'points', e.target.value)}
-                      style={{ width: 60, fontSize: 16, fontWeight: 700, fontFamily: 'var(--mono)', textAlign: 'center', padding: '4px 6px' }} />
-                    <span style={{ fontSize: 13, color: 'var(--text2)' }}>/ {maxPts}</span>
-                  </div>
-                </div>
 
-                {/* Evidence */}
-                {cg.evidence && (
-                  <div style={{ fontSize: 12, color: 'var(--text3)', fontStyle: 'italic', padding: '6px 10px', background: 'var(--bg2)', borderRadius: 6, marginBottom: 8, borderLeft: '2px solid var(--border2)' }}>
-                    "{cg.evidence}"
-                  </div>
-                )}
+                    {/* Evidence */}
+                    {cg?.evidence && (
+                      <div style={{ fontSize: 11, color: 'var(--text3)', fontStyle: 'italic', marginBottom: 6, padding: '5px 8px', background: 'var(--bg2)', borderRadius: 4, borderLeft: '2px solid var(--border2)' }}>
+                        "{cg.evidence}"
+                      </div>
+                    )}
 
-                {/* Comment */}
-                <div>
-                  <label>Comment</label>
-                  <textarea rows={2} value={comment}
-                    onChange={e => updateOverride(cg.criterionName, 'comment', e.target.value)}
-                    style={{ fontSize: 12, lineHeight: 1.6 }} />
+                    {/* Comment */}
+                    <textarea rows={2} value={comment}
+                      onChange={e => setComments(c2 => ({ ...c2, [c.name]: e.target.value }))}
+                      placeholder="Add a comment for this criterion…"
+                      style={{ fontSize: 12, lineHeight: 1.5, marginBottom: 0 }} />
+                  </div>
+                );
+              })}
+
+              {/* Instructor feedback paragraph */}
+              <div style={{ marginBottom: 12 }}>
+                <label>Instructor feedback (3-4 sentences)</label>
+                <textarea rows={4} value={feedback} onChange={e => setFeedback(e.target.value)}
+                  style={{ fontSize: 13, lineHeight: 1.7 }} />
+              </div>
+
+              {/* Copy outputs */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <button className="primary" style={{ padding: '11px', fontSize: 13, fontWeight: 600 }}
+                  onClick={() => copy(buildCanvasOutput(), 'all')}>
+                  {copied === 'all' ? '✓ Copied! Paste into Canvas SpeedGrader' : '📋 Copy all grades + feedback for Canvas'}
+                </button>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button style={{ flex: 1, fontSize: 12 }}
+                    onClick={() => copy(feedback, 'fb')}>
+                    {copied === 'fb' ? '✓ Copied' : 'Copy feedback only'}
+                  </button>
+                  <button style={{ flex: 1, fontSize: 12 }}
+                    onClick={() => copy(`${getTotal().toFixed(1)} / ${totalMax}`, 'grade')}>
+                    {copied === 'grade' ? '✓ Copied' : 'Copy final grade'}
+                  </button>
+                  <button style={{ fontSize: 12 }} onClick={nextStudent}>
+                    Next student →
+                  </button>
                 </div>
               </div>
-            );
-          })}
-
-          {/* Copy all for Canvas */}
-          <div style={{ marginTop: 16, display: 'flex', gap: 8 }}>
-            <button className="primary" style={{ flex: 1, padding: 12, fontSize: 14, fontWeight: 600 }}
-              onClick={() => copy(buildCanvasText(), 'all')}>
-              {copied === 'all' ? '✓ Copied — paste into Canvas SpeedGrader' : '📋 Copy all grades + comments for Canvas'}
-            </button>
-            <button style={{ fontSize: 13, padding: '12px 16px' }} onClick={reset}>
-              Next student
-            </button>
-          </div>
-
-          <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text3)', textAlign: 'center' }}>
-            Paste into Canvas SpeedGrader rubric comment box
-          </div>
+            </>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
