@@ -25,6 +25,12 @@ export default function DiscussGrader({ course, password, assignments }) {
   const [copied, setCopied] = useState('');
   const [importingRubric, setImportingRubric] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
+  const [history, setHistory] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [viewingHistory, setViewingHistory] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [viewingHistory, setViewingHistory] = useState(null);
+  const [showHistory, setShowHistory] = useState(false);
   // Regenerate controls
   const [tone, setTone] = useState('warm');
   const [length, setLength] = useState('medium');
@@ -41,6 +47,7 @@ export default function DiscussGrader({ course, password, assignments }) {
       setRubricCriteria(selectedAssignment.rubricCriteria);
       setTotalMax(selectedAssignment.rubricCriteria.reduce((s, c) => s + c.maxPoints, 0));
     }
+    if (selectedAssignment) loadHistory();
   }, [selectedAssignment?.id]);
 
   async function importRubricCSV(text) {
@@ -62,6 +69,28 @@ export default function DiscussGrader({ course, password, assignments }) {
       }
     } catch (e) { alert('Import error: ' + e.message); }
     setImportingRubric(false);
+  }
+
+  async function loadHistory() {
+    if (!selectedAssignment) return;
+    try {
+      const r = await fetch(`${BASE}/api/grade?courseId=${course.id}&assignmentId=${selectedAssignment.id}`, {
+        headers: { 'x-admin-password': password }
+      });
+      const grades = await r.json();
+      setHistory(grades.filter(g => g.comments && Array.isArray(g.comments)));
+    } catch (e) {}
+  }
+
+  async function loadHistory() {
+    if (!selectedAssignment) return;
+    try {
+      const r = await fetch(`${BASE}/api/grade?courseId=${course.id}&assignmentId=${selectedAssignment.id}`, {
+        headers: { 'x-admin-password': password }
+      });
+      const grades = await r.json();
+      setHistory(grades || []);
+    } catch (e) {}
   }
 
   async function gradeSubmission() {
@@ -90,6 +119,7 @@ export default function DiscussGrader({ course, password, assignments }) {
       setScores(initScores); setRatings(initRatings); setRationale(initRationale);
     } catch (e) { alert('Error: ' + e.message); }
     setGrading(false);
+    loadHistory();
   }
 
   async function regenerateFeedback() {
@@ -186,6 +216,14 @@ export default function DiscussGrader({ course, password, assignments }) {
           <button onClick={() => csvRef.current.click()} disabled={importingRubric} style={{ fontSize: 12 }}>
             {importingRubric ? 'Importing…' : hasRubric ? '↺ Update rubric' : '↑ Import rubric CSV'}
           </button>
+          {history.length > 0 && (
+            <button onClick={() => { setShowHistory(h => !h); setViewingHistory(null); }}
+              style={{ fontSize: 12, fontWeight: showHistory ? 600 : 400,
+                background: showHistory ? 'var(--bg3)' : 'var(--bg)',
+                borderColor: showHistory ? 'var(--border2)' : 'var(--border)' }}>
+              📚 History ({history.length})
+            </button>
+          )}
         </div>
       </div>
 
@@ -373,6 +411,151 @@ export default function DiscussGrader({ course, password, assignments }) {
           )}
         </div>
       </div>
+      {/* History panel */}
+      {showHistory && (
+        <div style={{ marginTop: 20, borderTop: '2px solid var(--border)', paddingTop: 16 }}>
+          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>
+            Grading History — {selectedAssignment?.name}
+          </div>
+          {viewingHistory ? (
+            <div>
+              <button className="ghost" style={{ fontSize: 12, marginBottom: 12 }}
+                onClick={() => setViewingHistory(null)}>← Back to list</button>
+              <HistoryDetail grade={viewingHistory} rubricCriteria={rubricCriteria} />
+            </div>
+          ) : (
+            <div>
+              {history.map(g => (
+                <div key={g.id} className="card card-hover" style={{ marginBottom: 6, padding: '10px 14px' }}
+                  onClick={() => setViewingHistory(g)}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 14 }}>{g.studentName || 'Unknown'}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
+                        Graded {new Date(g.gradedAt).toLocaleDateString()}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span style={{ fontFamily: 'var(--mono)', fontSize: 20, fontWeight: 700,
+                        color: parseFloat(g.total)/parseFloat(g.maxScore) >= 0.9 ? 'var(--green)' :
+                               parseFloat(g.total)/parseFloat(g.maxScore) >= 0.8 ? 'var(--accent)' : 'var(--amber)' }}>
+                        {g.total}/{g.maxScore}
+                      </span>
+                      <span style={{ fontSize: 12, color: 'var(--accent)' }}>View rationale →</span>
+                    </div>
+                  </div>
+                  {g.key_improvement && (
+                    <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 4 }}>→ {g.key_improvement}</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HistoryDetail({ grade, rubricCriteria }) {
+  const criteriaGrades = Array.isArray(grade.comments) ? grade.comments : [];
+  const [copiedRationale, setCopiedRationale] = useState(false);
+
+  function buildRationaleText() {
+    const lines = [`${grade.studentName} — ${grade.assignmentName}`, `Total: ${grade.total}/${grade.maxScore}`, '', 'Scoring Rationale (Instructor Reference)', ''];
+    criteriaGrades.forEach(cg => {
+      const shortName = (cg.criterionName || '').split(':').pop().trim();
+      lines.push(`${shortName} (${cg.finalPoints || cg.suggestedPoints}/${cg.maxPoints || 15}):`);
+      lines.push(cg.scoringRationale || cg.studentComment || '');
+      lines.push('');
+    });
+    if (grade.instructor_paragraph) {
+      lines.push('Instructor Feedback:');
+      lines.push(grade.instructor_paragraph);
+    }
+    return lines.join('\n');
+  }
+
+  function copy(text, key) {
+    navigator.clipboard.writeText(text);
+    setCopiedRationale(true);
+    setTimeout(() => setCopiedRationale(false), 2000);
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 17 }}>{grade.studentName}</div>
+          <div style={{ fontSize: 12, color: 'var(--text2)' }}>
+            {grade.assignmentName} · Graded {new Date(grade.gradedAt).toLocaleDateString()}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <span style={{ fontFamily: 'var(--mono)', fontSize: 24, fontWeight: 700,
+            color: parseFloat(grade.total)/parseFloat(grade.maxScore) >= 0.9 ? 'var(--green)' :
+                   parseFloat(grade.total)/parseFloat(grade.maxScore) >= 0.8 ? 'var(--accent)' : 'var(--amber)' }}>
+            {grade.total}/{grade.maxScore}
+          </span>
+          <button onClick={() => copy(buildRationaleText())} style={{ fontSize: 12 }}>
+            {copiedRationale ? '✓ Copied' : 'Copy rationale'}
+          </button>
+        </div>
+      </div>
+
+      {criteriaGrades.length > 0 ? (
+        criteriaGrades.map((cg, i) => {
+          const shortName = (cg.criterionName || '').split(':').pop().trim();
+          const pts = cg.finalPoints || cg.suggestedPoints || 0;
+          const maxPts = cg.maxPoints || 15;
+          return (
+            <div key={i} className="card" style={{ marginBottom: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <span style={{ fontWeight: 600, fontSize: 13 }}>{shortName}</span>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  {cg.suggestedRating && (
+                    <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4,
+                      color: {'Accomplished':'#16A34A','Proficient':'#2563EB','Needs Improvement':'#D97706','Unacceptable':'#DC2626'}[cg.suggestedRating] || 'var(--text2)',
+                      background: {'Accomplished':'rgba(22,163,74,0.1)','Proficient':'rgba(37,99,235,0.1)','Needs Improvement':'rgba(217,119,6,0.1)','Unacceptable':'rgba(220,38,38,0.1)'}[cg.suggestedRating] || 'var(--bg3)',
+                      border: '1px solid currentColor' }}>
+                      {cg.suggestedRating}
+                    </span>
+                  )}
+                  <span style={{ fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 16 }}>
+                    {pts}/{maxPts}
+                  </span>
+                </div>
+              </div>
+              {cg.scoringRationale && (
+                <div style={{ marginBottom: 6 }}>
+                  <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text3)', marginBottom: 3 }}>Scoring rationale</div>
+                  <div style={{ fontSize: 12, lineHeight: 1.65, color: 'var(--text)', padding: '8px 10px', background: 'var(--bg2)', borderRadius: 5, borderLeft: '3px solid var(--border2)' }}>
+                    {cg.scoringRationale}
+                  </div>
+                </div>
+              )}
+              {cg.studentComment && (
+                <div>
+                  <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text3)', marginBottom: 3 }}>Comment to student</div>
+                  <div style={{ fontSize: 12, lineHeight: 1.65, color: 'var(--text2)', fontStyle: 'italic' }}>{cg.studentComment}</div>
+                </div>
+              )}
+            </div>
+          );
+        })
+      ) : (
+        <div style={{ fontSize: 13, color: 'var(--text3)', padding: '20px 0', textAlign: 'center' }}>
+          No per-criterion rationale stored for this grade.<br/>
+          Grades from the new grader will have full rationale.
+        </div>
+      )}
+
+      {grade.instructor_paragraph && (
+        <div style={{ marginTop: 10, padding: '12px 16px', background: 'rgba(37,99,235,0.04)', border: '1px solid rgba(37,99,235,0.2)', borderRadius: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--accent)', marginBottom: 6 }}>Instructor Feedback</div>
+          <p style={{ fontSize: 13, lineHeight: 1.75, fontStyle: 'italic', margin: 0 }}>{grade.instructor_paragraph}</p>
+        </div>
+      )}
     </div>
   );
 }
