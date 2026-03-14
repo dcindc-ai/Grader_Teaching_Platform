@@ -324,6 +324,44 @@ export default function DiscussGrader({ course, password, assignments }) {
                 </table>
               </div>
 
+              {/* Scoring Rationale block — instructor reference */}
+              <div className="card" style={{ marginBottom: 10, background: 'var(--bg2)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text3)' }}>
+                    Scoring Rationale (Instructor Reference)
+                  </div>
+                  <button
+                    onClick={() => {
+                      const lines = rubricCriteria.map(c => {
+                        const pts = scores[c.name] ?? 0;
+                        const shortName = c.name.includes(':') ? c.name.split(':').pop().trim() : c.name;
+                        const rat = rationale[c.name]?.scoring || '';
+                        return `${shortName} (${pts}/${c.maxPoints}): ${rat}`;
+                      }).join('\n');
+                      navigator.clipboard.writeText('Scoring Rationale (Instructor Reference)\n\n' + lines);
+                      setCopied('rationale-block');
+                      setTimeout(() => setCopied(''), 2000);
+                    }}
+                    style={{ fontSize: 10, padding: '2px 8px',
+                      background: copied === 'rationale-block' ? 'var(--accent)' : 'transparent',
+                      color: copied === 'rationale-block' ? '#fff' : 'var(--text3)',
+                      border: `1px solid ${copied === 'rationale-block' ? 'var(--accent)' : 'var(--border)'}` }}>
+                    {copied === 'rationale-block' ? '✓ Copied' : 'Copy all rationale'}
+                  </button>
+                </div>
+                {rubricCriteria.map(c => {
+                  const pts = scores[c.name] ?? 0;
+                  const shortName = c.name.includes(':') ? c.name.split(':').pop().trim() : c.name;
+                  const rat = rationale[c.name]?.scoring || '';
+                  return (
+                    <div key={c.id} style={{ marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
+                      <span style={{ fontWeight: 700, fontSize: 12 }}>{shortName} ({pts}/{c.maxPoints}): </span>
+                      <span style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.65 }}>{rat || <em style={{ color: 'var(--text3)' }}>No rationale recorded</em>}</span>
+                    </div>
+                  );
+                })}
+              </div>
+
               {/* Criterion scores */}
               {rubricCriteria.map(c => {
                 const pts = scores[c.name] ?? 0;
