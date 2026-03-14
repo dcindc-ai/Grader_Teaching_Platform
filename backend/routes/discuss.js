@@ -69,16 +69,23 @@ async function callClaude(system, userMessage) {
 router.post('/reply', async (req, res) => {
   const {
     courseId, question, studentName, studentResponse,
-    tone = 'warm', sentenceCount = 6, wordsPerSentence = 18, structure = 'organized'
+    tone = 'warm', sentenceCount = 6, wordsPerSentence = 18, structure = 'organized',
+    refinement = '', previousResponse = ''
   } = req.body;
 
   const course = db.prepare('SELECT * FROM courses WHERE id=?').get(courseId);
   if (!course) return res.status(400).json({ error: 'Course not found' });
 
   try {
+    let userMessage;
+    if (refinement && previousResponse) {
+      userMessage = `Student name: ${studentName}\n\nStudent submission:\n${studentResponse}\n\nYour previous response was:\n${previousResponse}\n\nRevision instruction: ${refinement}\n\nRewrite the response applying this instruction. Keep what works, change what the instruction specifies.`;
+    } else {
+      userMessage = `Student name: ${studentName}\n\nStudent submission:\n${studentResponse}\n\nWrite your instructor feedback paragraph.`;
+    }
     const reply = await callClaude(
       buildReplyPrompt({ course, question, tone, sentenceCount, wordsPerSentence, structure }),
-      `Student name: ${studentName}\n\nStudent submission:\n${studentResponse}\n\nWrite your instructor feedback paragraph.`
+      userMessage
     );
     const id = uuidv4();
     db.prepare('INSERT INTO discussions (id,course_id,question,student_name,student_response,instructor_reply,sentence_count) VALUES (?,?,?,?,?,?,?)')

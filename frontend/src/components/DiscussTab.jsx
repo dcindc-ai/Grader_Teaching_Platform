@@ -22,6 +22,7 @@ export default function DiscussTab({ course, password, session, onSession, assig
   const [sentences, setSentences] = useState(6);
   const [wordsPerSentence, setWordsPerSentence] = useState(18);
   const [structure, setStructure] = useState('organized');
+  const [refinement, setRefinement] = useState('');
 
   async function handleGenerate() {
     if (!name.trim() || !studentAnswer.trim() || !question.trim()) return;
@@ -53,9 +54,11 @@ export default function DiscussTab({ course, password, session, onSession, assig
       const { reply } = await generateReply({
         courseId: course.id, question,
         studentName: name, studentResponse: studentAnswer,
-        tone, sentenceCount: sentences, wordsPerSentence, structure
+        tone, sentenceCount: sentences, wordsPerSentence, structure,
+        refinement, previousResponse: response
       }, password);
       setResponse(reply);
+      setRefinement('');
     } catch (e) { setResponse('Error: ' + e.message); }
     setLoading(false);
   }
@@ -221,8 +224,23 @@ export default function DiscussTab({ course, password, session, onSession, assig
                     style={{ width: '100%', minHeight: 220, fontSize: 14, lineHeight: 1.8, padding: '12px 14px', fontStyle: 'italic', border: '2px solid rgba(37,99,235,0.25)', borderRadius: 8, background: 'rgba(37,99,235,0.03)', resize: 'vertical' }}
                   />
 
-                  <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4, marginBottom: 12 }}>
-                    Edit the text above directly, or adjust controls and regenerate.
+                  <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4, marginBottom: 10 }}>
+                    Edit directly above, or give specific instructions below and regenerate.
+                  </div>
+
+                  {/* Refinement instruction box */}
+                  <div style={{ marginBottom: 10 }}>
+                    <label>Specific instruction for next regeneration</label>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <input type="text" value={refinement} onChange={e => setRefinement(e.target.value)}
+                        placeholder="e.g. Don't mention word count. Focus on the missing Sambasivan citation instead."
+                        onKeyDown={e => e.key === 'Enter' && handleRegenerate()}
+                        style={{ flex: 1, fontSize: 13 }} />
+                      <button onClick={handleRegenerate} disabled={loading || !refinement.trim()}
+                        className="primary" style={{ fontSize: 12, padding: '0 14px', flexShrink: 0 }}>
+                        {loading ? '…' : '↻ Apply'}
+                      </button>
+                    </div>
                   </div>
 
                   {/* Word / sentence stats */}
