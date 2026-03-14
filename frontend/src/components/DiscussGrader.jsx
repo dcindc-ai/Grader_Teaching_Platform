@@ -28,9 +28,6 @@ export default function DiscussGrader({ course, password, assignments }) {
   const [history, setHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
   const [viewingHistory, setViewingHistory] = useState(null);
-  const [history, setHistory] = useState([]);
-  const [viewingHistory, setViewingHistory] = useState(null);
-  const [showHistory, setShowHistory] = useState(false);
   // Regenerate controls
   const [tone, setTone] = useState('warm');
   const [length, setLength] = useState('medium');
