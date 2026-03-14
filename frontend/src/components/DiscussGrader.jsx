@@ -153,13 +153,23 @@ export default function DiscussGrader({ course, password, assignments }) {
     rubricCriteria.forEach(c => {
       const pts = scores[c.name] ?? 0;
       const rat = rationale[c.name]?.student || '';
-      lines.push(`${c.name.split(':').pop().trim()}: ${pts}/${c.maxPoints} pts — ${ratings[c.name] || ''}`);
-      if (rat) lines.push(rat);
+      const rating = ratings[c.name] || '';
+      const shortName = c.name.includes(':') ? c.name.split(':').pop().trim() : c.name;
+      lines.push(`${shortName}`);
+      lines.push(`Score: ${pts} / ${c.maxPoints} pts — ${rating}`);
+      if (rat) lines.push(`Comment: ${rat}`);
       lines.push('');
     });
-    lines.push(`Total: ${getTotal().toFixed(0)} / ${totalMax} pts`);
-    if (feedback) { lines.push(''); lines.push(feedback); }
+    lines.push(`TOTAL: ${getTotal().toFixed(0)} / ${totalMax} pts`);
+    if (feedback) { lines.push(''); lines.push('---'); lines.push(feedback); }
     return lines.join('\n');
+  }
+
+  function buildCriterionText(c) {
+    const pts = scores[c.name] ?? 0;
+    const rat = rationale[c.name]?.student || '';
+    const rating = ratings[c.name] || '';
+    return `${pts} / ${c.maxPoints} pts — ${rating}${rat ? '\n' + rat : ''}`;
   }
 
   function downloadDocx() {
@@ -288,6 +298,32 @@ export default function DiscussGrader({ course, password, assignments }) {
                 </div>
               </div>
 
+              {/* Quick summary table */}
+              <div className="card" style={{ marginBottom: 10, padding: '10px 12px' }}>
+                <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text3)', marginBottom: 8 }}>Score summary</div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <tbody>
+                    {rubricCriteria.map(c => {
+                      const pts = scores[c.name] ?? 0;
+                      const pct = pts / c.maxPoints;
+                      const color = pct >= 0.9 ? 'var(--green)' : pct >= 0.8 ? 'var(--accent)' : pct >= 0.7 ? 'var(--amber)' : 'var(--red)';
+                      const shortName = c.name.includes(':') ? c.name.split(':').pop().trim() : c.name;
+                      return (
+                        <tr key={c.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td style={{ padding: '5px 0', color: 'var(--text2)' }}>{shortName}</td>
+                          <td style={{ padding: '5px 0', textAlign: 'center', color: 'var(--text3)', fontSize: 11 }}>{ratings[c.name] || ''}</td>
+                          <td style={{ padding: '5px 0', textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, color }}>{pts}/{c.maxPoints}</td>
+                        </tr>
+                      );
+                    })}
+                    <tr>
+                      <td style={{ padding: '6px 0', fontWeight: 700 }} colSpan={2}>Total</td>
+                      <td style={{ padding: '6px 0', textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, color: totalColor(), fontSize: 15 }}>{getTotal().toFixed(0)}/{totalMax}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
               {/* Criterion scores */}
               {rubricCriteria.map(c => {
                 const pts = scores[c.name] ?? 0;
@@ -297,7 +333,24 @@ export default function DiscussGrader({ course, password, assignments }) {
 
                 return (
                   <div key={c.id} className="card" style={{ marginBottom: 8 }}>
-                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>{shortName}</div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>{shortName}</div>
+                    <button
+                      onClick={() => {
+                        const rat = rationale[c.name]?.student || '';
+                        const rating = ratings[c.name] || '';
+                        const pts = scores[c.name] ?? 0;
+                        navigator.clipboard.writeText(`${pts} / ${c.maxPoints} pts — ${rating}${rat ? '\n' + rat : ''}`);
+                        setCopied(`crit-${c.id}`);
+                        setTimeout(() => setCopied(''), 2000);
+                      }}
+                      style={{ fontSize: 10, padding: '2px 8px',
+                        background: copied === `crit-${c.id}` ? 'var(--accent)' : 'transparent',
+                        color: copied === `crit-${c.id}` ? '#fff' : 'var(--text3)',
+                        border: `1px solid ${copied === `crit-${c.id}` ? 'var(--accent)' : 'var(--border)'}` }}>
+                      {copied === `crit-${c.id}` ? '✓ Copied' : 'Copy score + comment'}
+                    </button>
+                  </div>
 
                     {/* Rating buttons */}
                     <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
