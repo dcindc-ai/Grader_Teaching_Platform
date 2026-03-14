@@ -225,4 +225,9 @@ function parseAlwaysOn(r) {
     reviewedAt:r.reviewed_at, reviewNotes:r.review_notes, createdAt:r.created_at };
 }
 
-module.exports = { db, parseCourse, parseAssignment, parseGrade, parseMaterial, parseAlwaysOn };
+function firstName(name) {
+  if (!name || name === 'Unknown') return name || 'Unknown';
+  return name.trim().split(' ')[0];
+}
+
+module.exports = { db, parseCourse, parseAssignment, parseGrade, parseMaterial, parseAlwaysOn, firstName };

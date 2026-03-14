@@ -128,3 +128,162 @@ router.get('/download', async (req, res) => {
 });
 
 module.exports = router;
+
+// GET /api/alwayson/docx/:id — download single Always-On as Word doc
+router.get('/docx/:id', async (req, res) => {
+  const item = parseAlwaysOn(db.prepare('SELECT * FROM always_on WHERE id=?').get(req.params.id));
+  if (!item) return res.status(404).json({ error: 'Not found' });
+
+  try {
+    const {
+      Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
+      BorderStyle, WidthType, ShadingType
+    } = require('docx');
+
+    const BLUE = '2563EB';
+    const AMBER = 'D97706';
+    const GRAY = '6B7280';
+    const noBorders = {
+      top: { style: BorderStyle.NONE, size: 0 },
+      bottom: { style: BorderStyle.NONE, size: 0 },
+      left: { style: BorderStyle.NONE, size: 0 },
+      right: { style: BorderStyle.NONE, size: 0 }
+    };
+
+    const firstName = (item.studentName || 'Student').split(' ')[0];
+    const children = [];
+
+    // Header accent bar
+    children.push(new Paragraph({
+      border: { bottom: { style: BorderStyle.SINGLE, size: 24, color: BLUE, space: 1 } },
+      spacing: { after: 0 },
+      children: []
+    }));
+
+    children.push(new Paragraph({ spacing: { after: 80 } }));
+
+    // Title
+    children.push(new Paragraph({
+      children: [new TextRun({ text: 'Always-On Learning', bold: true, size: 32, color: BLUE, font: 'Arial' })],
+      spacing: { after: 60 }
+    }));
+
+    children.push(new Paragraph({
+      children: [
+        new TextRun({ text: `For: `, bold: true, size: 22, font: 'Arial' }),
+        new TextRun({ text: firstName, size: 22, font: 'Arial' }),
+        new TextRun({ text: `   |   `, size: 22, color: 'D1D5DB', font: 'Arial' }),
+        new TextRun({ text: `Assignment: `, bold: true, size: 22, font: 'Arial' }),
+        new TextRun({ text: item.assignmentName || '', size: 22, font: 'Arial' }),
+      ],
+      spacing: { after: 200 }
+    }));
+
+    // Focus area
+    children.push(new Paragraph({
+      children: [new TextRun({ text: 'FOCUS AREA', bold: true, size: 18, color: GRAY, font: 'Arial' })],
+      spacing: { after: 80 }
+    }));
+
+    children.push(new Table({
+      width: { size: 9360, type: WidthType.DXA },
+      columnWidths: [9360],
+      rows: [new TableRow({
+        children: [new TableCell({
+          borders: { ...noBorders, left: { style: BorderStyle.SINGLE, size: 16, color: AMBER } },
+          width: { size: 9360, type: WidthType.DXA },
+          shading: { fill: 'FFFBEB', type: ShadingType.CLEAR },
+          margins: { top: 100, bottom: 100, left: 160, right: 120 },
+          children: [new Paragraph({
+            children: [new TextRun({ text: item.weakArea || '', bold: true, size: 24, color: '92400E', font: 'Arial' })]
+          })]
+        })]
+      })]
+    }));
+
+    children.push(new Paragraph({ spacing: { after: 200 } }));
+
+    // Feedback
+    children.push(new Paragraph({
+      children: [new TextRun({ text: 'WHAT TO THINK ABOUT NEXT', bold: true, size: 18, color: GRAY, font: 'Arial' })],
+      spacing: { after: 80 }
+    }));
+
+    children.push(new Table({
+      width: { size: 9360, type: WidthType.DXA },
+      columnWidths: [9360],
+      rows: [new TableRow({
+        children: [new TableCell({
+          borders: { ...noBorders, left: { style: BorderStyle.SINGLE, size: 16, color: BLUE } },
+          width: { size: 9360, type: WidthType.DXA },
+          shading: { fill: 'EFF6FF', type: ShadingType.CLEAR },
+          margins: { top: 120, bottom: 120, left: 160, right: 120 },
+          children: [new Paragraph({
+            children: [new TextRun({ text: item.feedbackSentences || '', size: 22, italics: true, color: '1E3A5F', font: 'Arial' })]
+          })]
+        })]
+      })]
+    }));
+
+    children.push(new Paragraph({ spacing: { after: 200 } }));
+
+    // Resources
+    if (item.links?.length) {
+      children.push(new Paragraph({
+        children: [new TextRun({ text: 'RESOURCES TO EXPLORE', bold: true, size: 18, color: GRAY, font: 'Arial' })],
+        spacing: { after: 100 }
+      }));
+
+      for (const lk of item.links) {
+        children.push(new Table({
+          width: { size: 9360, type: WidthType.DXA },
+          columnWidths: [9360],
+          rows: [new TableRow({
+            children: [new TableCell({
+              borders: { top: { style: BorderStyle.SINGLE, size: 1, color: 'E5E7EB' }, bottom: { style: BorderStyle.SINGLE, size: 1, color: 'E5E7EB' }, left: { style: BorderStyle.NONE, size: 0 }, right: { style: BorderStyle.NONE, size: 0 } },
+              width: { size: 9360, type: WidthType.DXA },
+              shading: { fill: 'F8FAFC', type: ShadingType.CLEAR },
+              margins: { top: 100, bottom: 100, left: 120, right: 120 },
+              children: [
+                new Paragraph({ children: [new TextRun({ text: lk.title || lk.url, bold: true, size: 20, color: BLUE, font: 'Arial' })], spacing: { after: 40 } }),
+                lk.why ? new Paragraph({ children: [new TextRun({ text: lk.why, size: 18, color: GRAY, font: 'Arial' })], spacing: { after: 40 } }) : null,
+                new Paragraph({ children: [new TextRun({ text: lk.url, size: 16, color: '60A5FA', font: 'Arial' })] })
+              ].filter(Boolean)
+            })]
+          })]
+        }));
+        children.push(new Paragraph({ spacing: { after: 80 } }));
+      }
+    }
+
+    // Footer
+    children.push(new Paragraph({ spacing: { after: 80 } }));
+    children.push(new Paragraph({
+      border: { top: { style: BorderStyle.SINGLE, size: 2, color: 'E5E7EB', space: 1 } },
+      spacing: { before: 120 },
+      children: [new TextRun({ text: 'Teaching Platform — Always-On Learning', size: 16, color: '9CA3AF', font: 'Arial' })]
+    }));
+
+    const doc = new Document({
+      styles: { default: { document: { run: { font: 'Arial', size: 22 } } } },
+      sections: [{
+        properties: {
+          page: {
+            size: { width: 12240, height: 15840 },
+            margin: { top: 1080, right: 1080, bottom: 1080, left: 1080 }
+          }
+        },
+        children
+      }]
+    });
+
+    const buffer = await Packer.toBuffer(doc);
+    const safe = firstName.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename="${safe}_always_on.docx"`);
+    res.send(buffer);
+  } catch (e) {
+    console.error('Always-On DOCX error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});

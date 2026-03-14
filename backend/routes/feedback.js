@@ -33,9 +33,10 @@ Write a 3-4 sentence feedback paragraph in your voice:
 
 Tone: warm, direct, like a real mentor — not generic praise. Sound like you know this student's work specifically.
 Never use em dashes. Keep it under 80 words.`,
+      const firstName = (grade.studentName || 'Student').split(' ')[0];
       messages: [{
         role: 'user',
-        content: `Student: ${grade.studentName}
+        content: `Student first name: ${firstName}
 Assignment: ${assignment?.name || grade.assignmentName}
 Score: ${grade.total}/${grade.maxScore}
 Key strength: ${grade.key_strength || 'good analytical effort'}

@@ -21,6 +21,9 @@ async function deleteItem(id, pw) {
 function downloadApproved(courseId, pw) {
   window.open(`${BASE}/api/alwayson/download?courseId=${courseId}&password=${encodeURIComponent(pw)}`, '_blank');
 }
+function downloadDocx(id, pw) {
+  window.open(`${BASE}/api/alwayson/docx/${id}?password=${encodeURIComponent(pw)}`, '_blank');
+}
 
 export default function AlwaysOnTab({ course, password }) {
   const [items, setItems] = useState([]);
@@ -224,6 +227,9 @@ export default function AlwaysOnTab({ course, password }) {
               {item.status !== 'pending' && (
                 <div style={{ display: 'flex', gap: 8, marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
                   <button style={{ fontSize: 12 }} onClick={() => startEdit(item)}>Edit</button>
+                  {item.status === 'approved' && (
+                    <button style={{ fontSize: 12 }} onClick={() => downloadDocx(item.id, password)}>↓ Word doc</button>
+                  )}
                   <button className="danger" style={{ fontSize: 12 }} onClick={() => handleDelete(item.id)}>Delete</button>
                 </div>
               )}
