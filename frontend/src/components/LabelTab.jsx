@@ -4,10 +4,13 @@ import { getAssignments, addExample, getExamples, deleteExample } from '../api.j
 const BASE = import.meta.env.PROD ? '' : 'http://localhost:3001';
 const SCORES = [3, 3.5, 4, 4.5, 5, 5.5, 6];
 
-export default function LabelTab({ course, password }) {
+export default function LabelTab({ course, password, queue: externalQueue, onQueue: onExternalQueue }) {
   const [assignments, setAssignments] = useState([]);
   const [assignmentId, setAssignmentId] = useState('');
-  const [queue, setQueue] = useState([]);
+  // Use external (lifted) queue if provided, otherwise local
+  const [localQueue, setLocalQueue] = useState([]);
+  const queue = externalQueue || localQueue;
+  const setQueue = onExternalQueue || setLocalQueue;
   const [selectedIdx, setSelectedIdx] = useState(null);
   const [saving, setSaving] = useState(false);
   const [parsing, setParsing] = useState(false);

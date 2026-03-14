@@ -16,6 +16,18 @@ export default function App() {
   const [view, setView] = useState('course');
   const [stats, setStats] = useState(null);
 
+  // ── Persisted cross-tab state ──────────────────────────────────────────
+  // Grade queues per course — survives tab switching
+  const [gradeQueues, setGradeQueues] = useState({});
+  // Grade results per course (in addition to DB — for instant UI)
+  const [gradeResults, setGradeResults] = useState({});
+  // Discussion sessions per course
+  const [discussSessions, setDiscussSessions] = useState({});
+  // Label queues per course
+  const [labelQueues, setLabelQueues] = useState({});
+  // Always-On pending counts per course
+  const [aoCounts, setAoCounts] = useState({});
+
   const loadAll = useCallback(async (password) => {
     setLoading(true);
     try {
@@ -26,7 +38,6 @@ export default function App() {
       setAuthed(true);
       sessionStorage.setItem('tp_pw', password);
     } catch (e) {
-      // Clear cached password on failure so user gets a clean login
       sessionStorage.removeItem('tp_pw');
       setAuthed(false);
       setPw('');
@@ -36,10 +47,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // Try stored password first, then try empty password (for no-auth mode)
     const stored = sessionStorage.getItem('tp_pw');
     if (stored) { loadAll(stored); return; }
-    // Try no-password auto-login
     loadAll('').catch(() => {});
   }, []); // eslint-disable-line
 
@@ -71,28 +80,62 @@ export default function App() {
     setActiveCourse(courses.find(c => c.id !== id)?.id || null);
   }
 
+  // Helpers to update per-course queues
+  function updateGradeQueue(courseId, updater) {
+    setGradeQueues(q => ({ ...q, [courseId]: updater(q[courseId] || []) }));
+  }
+  function updateGradeResults(courseId, updater) {
+    setGradeResults(r => ({ ...r, [courseId]: updater(r[courseId] || []) }));
+  }
+  function updateDiscussSession(courseId, updater) {
+    setDiscussSessions(s => ({ ...s, [courseId]: updater(s[courseId] || { submissions: [], question: '' }) }));
+  }
+  function updateLabelQueue(courseId, updater) {
+    setLabelQueues(q => ({ ...q, [courseId]: updater(q[courseId] || []) }));
+  }
+  function updateAoCount(courseId, count) {
+    setAoCounts(c => ({ ...c, [courseId]: count }));
+  }
+
   if (!authed) {
     return (
       <div className="login-screen">
         <div className="login-card">
-          <div className="login-mark">TP</div>
-          <div className="login-title">Teaching Platform</div>
-          <div className="login-sub">Dave Cook · UMD / Wake Forest</div>
-          <form onSubmit={handleLogin}>
-            <div className="field">
-              <label>Password</label>
-              <div style={{ position: 'relative' }}>
-                <input type={showPw ? 'text' : 'password'} value={pw} onChange={e => setPw(e.target.value)} autoFocus placeholder="Admin password" style={{ paddingRight: 44 }} />
-                <button type="button" onClick={() => setShowPw(s => !s)} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: 'var(--text2)', padding: '2px 4px' }}>
-                  {showPw ? '🙈' : '👁'}
-                </button>
-              </div>
+          <div className="login-mark">AO</div>
+          <div className="login-title">Always On Learning</div>
+          <div className="login-sub">Teaching Platform · Dave Cook</div>
+          {loading ? (
+            <div style={{ textAlign: 'center', color: 'var(--text2)', fontSize: 13, padding: '20px 0' }}>
+              Loading…
             </div>
-            {authErr && <div className="auth-err">{authErr}</div>}
-            <button type="submit" className="primary" style={{ width: '100%', marginTop: 8 }} disabled={loading}>
-              {loading ? 'Signing in…' : 'Sign in'}
-            </button>
-          </form>
+          ) : (
+            <form onSubmit={handleLogin}>
+              <div className="field">
+                <label>Password</label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type={showPw ? 'text' : 'password'}
+                    value={pw}
+                    onChange={e => setPw(e.target.value)}
+                    autoFocus
+                    placeholder="Admin password"
+                    style={{ paddingRight: 44 }}
+                  />
+                  <button type="button" onClick={() => setShowPw(s => !s)} style={{
+                    position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+                    background: 'none', border: 'none', cursor: 'pointer', fontSize: 16,
+                    color: 'var(--text2)', padding: '2px 4px'
+                  }}>
+                    {showPw ? '🙈' : '👁'}
+                  </button>
+                </div>
+              </div>
+              {authErr && <div className="auth-err">{authErr}</div>}
+              <button type="submit" className="primary" style={{ width: '100%', marginTop: 8 }} disabled={loading}>
+                {loading ? 'Signing in…' : 'Sign in'}
+              </button>
+            </form>
+          )}
         </div>
       </div>
     );
@@ -104,8 +147,8 @@ export default function App() {
     <div className="app-shell" style={{ '--course-color': course?.color || '#4f8ef7' }}>
       <header className="topbar">
         <div className="topbar-left">
-          <span className="topbar-mark">TP</span>
-          <span className="topbar-name">Teaching Platform</span>
+          <span className="topbar-mark">AO</span>
+          <span className="topbar-name">Always On Learning</span>
         </div>
         <nav className="topbar-nav">
           {courses.map(c => (
@@ -120,6 +163,10 @@ export default function App() {
               <span style={{ fontSize: 10, color: 'var(--text3)', marginLeft: 4 }}>
                 {c.institution?.split(' ').map(w => w[0]).join('')}
               </span>
+              {/* Show grading-in-progress indicator */}
+              {(gradeQueues[c.id] || []).some(q => q.status === 'grading') && (
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--amber)', marginLeft: 4, flexShrink: 0 }} />
+              )}
             </button>
           ))}
           <button
@@ -140,8 +187,8 @@ export default function App() {
             const name = prompt('Course short name (e.g. GEOG 662):');
             if (!name) return;
             const { createCourse } = await import('./api.js');
-            const course = await createCourse({ name, fullName: name, institution: '', term: '', color: '#4f8ef7' }, pw);
-            addCourse(course);
+            const c = await createCourse({ name, fullName: name, institution: '', term: '', color: '#4f8ef7' }, pw);
+            addCourse(c);
           }}>+ Course</button>
         </nav>
         <div className="topbar-right">
@@ -157,6 +204,17 @@ export default function App() {
             password={pw}
             onUpdateCourse={updateCourse}
             onDeleteCourse={() => removeCourse(course.id)}
+            // Persisted state passed down
+            gradeQueue={gradeQueues[course.id] || []}
+            onGradeQueue={(updater) => updateGradeQueue(course.id, updater)}
+            gradeResults={gradeResults[course.id] || []}
+            onGradeResults={(updater) => updateGradeResults(course.id, updater)}
+            discussSession={discussSessions[course.id] || { submissions: [], question: '' }}
+            onDiscussSession={(updater) => updateDiscussSession(course.id, updater)}
+            labelQueue={labelQueues[course.id] || []}
+            onLabelQueue={(updater) => updateLabelQueue(course.id, updater)}
+            aoCount={aoCounts[course.id] || 0}
+            onAoCount={(count) => updateAoCount(course.id, count)}
           />
         )}
         {view === 'corpus' && (

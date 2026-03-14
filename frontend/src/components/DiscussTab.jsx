@@ -1,15 +1,16 @@
 import { useState } from 'react';
 import { generateReply, generateSummary } from '../api.js';
 
-export default function DiscussTab({ course, password }) {
-  const [question, setQuestion] = useState(course.discussionDefaultQuestion || '');
+export default function DiscussTab({ course, password, session, onSession }) {
+  const submissions = session?.submissions || [];
+  const savedQuestion = session?.question || '';
+  const [question, setQuestion] = useState(savedQuestion || course.discussionDefaultQuestion || '');
   const [editingQ, setEditingQ] = useState(false);
   const [name, setName] = useState('');
   const [response, setResponse] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
-  const [submissions, setSubmissions] = useState([]);
   const [summary, setSummary] = useState('');
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryCopied, setSummaryCopied] = useState(false);
@@ -30,7 +31,7 @@ export default function DiscussTab({ course, password }) {
         studentResponse: studentAnswer
       }, password);
       setResponse(reply);
-      setSubmissions(s => [...s, { name: name.trim(), answer: studentAnswer.trim() }]);
+      onSession(s => ({ ...s, submissions: [...(s.submissions||[]), { name: name.trim(), answer: studentAnswer.trim() }], question }));
     } catch (e) { setError(e.message); }
     setLoading(false);
   }
@@ -48,7 +49,7 @@ export default function DiscussTab({ course, password }) {
 
   function handleNewDiscussion() {
     setQuestion('');
-    setSubmissions([]);
+    onSession(() => ({ submissions: [], question: '' }));
     setSummary('');
     setResponse('');
     setName('');
