@@ -1,0 +1,119 @@
+import { useState } from 'react';
+import { updateCourse } from '../api.js';
+
+const DIMS = [
+  { key: 'clarity', label: 'Clarity', lo: 'Accept buried BLUF', hi: 'BLUF must be sentence 1' },
+  { key: 'logic', label: 'Logic', lo: 'Allow unsupported claims', hi: 'Every claim needs evidence' },
+  { key: 'structure', label: 'Structure', lo: 'Allow missing elements', hi: 'All elements required' },
+  { key: 'tone', label: 'Tone', lo: 'Allow minor informality', hi: 'Zero tolerance for first-person' },
+  { key: 'style', label: 'Style', lo: 'Overlook unexplained color', hi: 'All colors must be in legend' }
+];
+
+const COLORS = ['#E21833','#CFB53B','#4f8ef7','#4caf72','#e07830','#9b59b6','#e05252','#16a085'];
+
+export default function CourseSettingsTab({ course, password, onUpdate, onDelete }) {
+  const [form, setForm] = useState({ ...course });
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  function upd(k, v) { setForm(f => ({ ...f, [k]: v })); }
+  function updSlider(k, v) { setForm(f => ({ ...f, sliders: { ...f.sliders, [k]: parseInt(v) } })); }
+
+  async function save() {
+    setSaving(true);
+    const updated = await updateCourse(course.id, form, password);
+    onUpdate(updated);
+    setSaving(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  }
+
+  async function handleDelete() {
+    if (!confirm(`Delete ${course.name}? All assignments and grades for this course will be lost.`)) return;
+    onDelete();
+  }
+
+  const avg = form.sliders ? (Object.values(form.sliders).reduce((a,b)=>a+b,0)/5).toFixed(1) : '3.0';
+
+  return (
+    <div style={{ maxWidth: 640 }}>
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between' }}>
+        <div>
+          <div className="page-title">Course Settings</div>
+          <div className="page-sub">Configure {course.name}</div>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save changes'}</button>
+          <button className="danger" onClick={handleDelete}>Delete course</button>
+        </div>
+      </div>
+
+      {/* Basic info */}
+      <div className="card" style={{ marginBottom: 14 }}>
+        <div style={{ fontWeight: 500, marginBottom: 12 }}>Basic Information</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div className="field"><label>Short name</label><input type="text" value={form.name||''} onChange={e=>upd('name',e.target.value)} placeholder="e.g. GEOG 661" /></div>
+          <div className="field"><label>Full name</label><input type="text" value={form.fullName||''} onChange={e=>upd('fullName',e.target.value)} placeholder="e.g. Fundamentals of Geospatial Intelligence" /></div>
+          <div className="field"><label>Institution</label><input type="text" value={form.institution||''} onChange={e=>upd('institution',e.target.value)} placeholder="University name" /></div>
+          <div className="field"><label>Term</label><input type="text" value={form.term||''} onChange={e=>upd('term',e.target.value)} placeholder="e.g. Spring 2026" /></div>
+        </div>
+        <div className="field">
+          <label>Course color</label>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {COLORS.map(c => (
+              <div key={c} onClick={() => upd('color', c)} style={{
+                width: 28, height: 28, borderRadius: 6, background: c, cursor: 'pointer',
+                border: form.color === c ? '3px solid white' : '2px solid transparent',
+                boxShadow: form.color === c ? `0 0 0 2px ${c}` : 'none'
+              }} />
+            ))}
+            <input type="text" value={form.color||''} onChange={e=>upd('color',e.target.value)} placeholder="#hex" style={{ width: 80 }} />
+          </div>
+        </div>
+      </div>
+
+      {/* Instructor voice */}
+      <div className="card" style={{ marginBottom: 14 }}>
+        <div style={{ fontWeight: 500, marginBottom: 12 }}>Instructor Voice</div>
+        <div className="field">
+          <label>Instructor bio (used in discussion responses)</label>
+          <textarea rows={5} value={form.instructorBio||''} onChange={e=>upd('instructorBio',e.target.value)} placeholder="Brief bio used to set instructor voice in discussion responses" style={{ fontSize: 12, lineHeight: 1.6 }} />
+        </div>
+        <div className="field">
+          <label>Voice guidelines</label>
+          <textarea rows={3} value={form.voiceGuidelines||''} onChange={e=>upd('voiceGuidelines',e.target.value)} placeholder="e.g. Casual, direct, warm. Not stiff or academic. Sharp mentor tone." style={{ fontSize: 12 }} />
+        </div>
+        <div className="field">
+          <label>Default discussion question</label>
+          <textarea rows={5} value={form.discussionDefaultQuestion||''} onChange={e=>upd('discussionDefaultQuestion',e.target.value)} placeholder="Default opening question for the course" style={{ fontSize: 12 }} />
+        </div>
+      </div>
+
+      {/* Grading strictness */}
+      <div className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <div style={{ fontWeight: 500 }}>Grading Strictness</div>
+          <span style={{ fontSize: 12, color: 'var(--text2)' }}>avg {avg}/5</span>
+        </div>
+        {DIMS.map(d => (
+          <div key={d.key} style={{ marginBottom: 18 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+              <span style={{ fontWeight: 500 }}>{d.label}</span>
+              <span style={{ fontFamily: 'var(--mono)', fontWeight: 500 }}>{form.sliders?.[d.key] || 3}</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 11, color: 'var(--text3)', width: 140 }}>{d.lo}</span>
+              <input type="range" min="1" max="5" step="1" value={form.sliders?.[d.key] || 3} onChange={e => updSlider(d.key, e.target.value)} style={{ flex: 1 }} />
+              <span style={{ fontSize: 11, color: 'var(--text3)', width: 140, textAlign: 'right' }}>{d.hi}</span>
+            </div>
+          </div>
+        ))}
+        <div style={{ padding: '10px 12px', background: 'var(--bg3)', borderRadius: 6, fontSize: 12, color: 'var(--text2)' }}>
+          {parseFloat(avg) <= 2 ? 'Lenient — rewarding effort, flagging critical errors only.' :
+           parseFloat(avg) >= 4 ? 'Strict — professional analyst standards.' :
+           'Moderate — rubric-based with learning-curve allowance.'}
+        </div>
+      </div>
+    </div>
+  );
+}
