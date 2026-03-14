@@ -21,6 +21,7 @@ router.post('/regenerate/:gradeId', async (req, res) => {
 
   try {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const firstName = (grade.studentName || 'Student').split(' ')[0];
     const resp = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 400,
@@ -33,7 +34,6 @@ Write a 3-4 sentence feedback paragraph in your voice:
 
 Tone: warm, direct, like a real mentor — not generic praise. Sound like you know this student's work specifically.
 Never use em dashes. Keep it under 80 words.`,
-      const firstName = (grade.studentName || 'Student').split(' ')[0];
       messages: [{
         role: 'user',
         content: `Student first name: ${firstName}
