@@ -36,6 +36,7 @@ app.use('/api/alwayson', require('./routes/alwayson'));
 app.use('/api/dev', require('./routes/dev'));
 app.use('/api/label', require('./routes/label'));
 app.use('/api/feedback', require('./routes/feedback'));
+app.use('/api/classreport', require('./routes/classreport'));
 
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, 'public')));

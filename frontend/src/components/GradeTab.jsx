@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { getAssignments, getGrades, deleteGrade, downloadGrades, gradeBatch } from '../api.js';
 import ReviewPanel from './ReviewPanel.jsx';
 
+const BASE = import.meta.env.PROD ? '' : 'http://localhost:3001';
+
 function scoreColor(val, max) {
   const p = parseFloat(val) / max;
   return p >= 0.85 ? 'var(--green)' : p >= 0.6 ? 'var(--amber)' : 'var(--red)';
@@ -157,9 +159,17 @@ export default function GradeTab({ course, password, activeAssignmentId }) {
               )}
             </div>
             {assignGrades.length > 0 && (
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 <button style={{ fontSize: 12 }} onClick={() => downloadGrades(course.id, selectedId, password)}>
-                  ↓ Download ZIP
+                  ↓ ZIP
+                </button>
+                <button style={{ fontSize: 12, fontWeight: 500, background: 'rgba(37,99,235,0.08)', color: 'var(--accent)', borderColor: 'rgba(37,99,235,0.3)' }}
+                  onClick={() => window.open(`${BASE}/api/classreport/${selectedId}/pdf?password=${encodeURIComponent(password)}`, '_blank')}>
+                  📋 Class Report
+                </button>
+                <button style={{ fontSize: 12, fontWeight: 500, background: 'rgba(22,163,74,0.08)', color: 'var(--green)', borderColor: 'rgba(22,163,74,0.3)' }}
+                  onClick={() => window.open(`${BASE}/api/classreport/${selectedId}/pptx?password=${encodeURIComponent(password)}`, '_blank')}>
+                  📊 Class Slides
                 </button>
                 <button className="danger" style={{ fontSize: 12 }} onClick={async () => {
                   if (!confirm('Clear all results for this assignment?')) return;
