@@ -32,6 +32,15 @@ function downloadAllDocx(courseId, pw) {
   window.open(`${BASE}/api/alwayson/download?courseId=${courseId}&password=${encodeURIComponent(pw)}`, '_blank');
 }
 
+async function generateAlwaysOn(courseId, assignmentId, mode, studentName, pw) {
+  const r = await fetch(`${BASE}/api/alwayson/generate`, {
+    method: 'POST',
+    headers: { ...h(pw), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ courseId, assignmentId, mode, studentName })
+  });
+  return r.json();
+}
+
 function firstName(name) {
   if (!name || name === 'Unknown' || name === 'Class') return name || 'Unknown';
   return name.trim().split(' ')[0];
@@ -46,6 +55,18 @@ export default function AlwaysOnTab({ course, password }) {
   const [classSummary, setClassSummary] = useState(null);
   const [generatingSummary, setGeneratingSummary] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
+  const [showGenerate, setShowGenerate] = useState(false);
+  const [assignments, setAssignments] = useState([]);
+  const [genAssignmentId, setGenAssignmentId] = useState('');
+  const [genMode, setGenMode] = useState('per-student');
+  const [genStudent, setGenStudent] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [genResult, setGenResult] = useState(null);
+
+  useEffect(() => {
+    fetch(`${BASE}/api/assignments?courseId=${course.id}`, { headers: h(password) })
+      .then(r => r.json()).then(setAssignments).catch(() => {});
+  }, [course.id]);
 
   useEffect(() => {
     getItems(course.id, filter, password).then(setItems);

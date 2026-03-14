@@ -465,3 +465,102 @@ Return ONLY valid JSON, no fences:
     res.status(500).json({ error: e.message });
   }
 });
+
+// POST /api/alwayson/generate — generate Always-On for an assignment or discussion
+router.post('/generate', async (req, res) => {
+  const { courseId, assignmentId, mode, studentName } = req.body;
+  // mode: 'per-student' | 'class'
+  if (!courseId) return res.status(400).json({ error: 'courseId required' });
+
+  const Anthropic = require('@anthropic-ai/sdk');
+  const { v4: uuidv4 } = require('uuid');
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const course = db.prepare('SELECT * FROM courses WHERE id=?').get(courseId);
+  const assignment = assignmentId ? db.prepare('SELECT * FROM assignments WHERE id=?').get(assignmentId) : null;
+
+  // Get source data — grades or discussions
+  let sourceData = [];
+  if (assignmentId) {
+    // Graded assignment
+    let q = 'SELECT * FROM grades WHERE course_id=? AND assignment_id=?';
+    const params = [courseId, assignmentId];
+    if (mode === 'per-student' && studentName) { q += ' AND student_name LIKE ?'; params.push(`%${studentName.split(' ')[0]}%`); }
+    sourceData = db.prepare(q).all(...params).map(g => ({
+      type: 'grade',
+      studentName: g.student_name,
+      total: g.total,
+      maxScore: g.max_score,
+      keyImprovement: g.key_improvement,
+      summary: g.summary,
+      comments: JSON.parse(g.comments || '{}')
+    }));
+  } else {
+    // Discussion (no assignmentId) — use discussion history
+    let q = 'SELECT * FROM discussions WHERE course_id=?';
+    const params = [courseId];
+    if (mode === 'per-student' && studentName) { q += ' AND student_name LIKE ?'; params.push(`%${studentName.split(' ')[0]}%`); }
+    sourceData = db.prepare(q).all(...params).map(d => ({
+      type: 'discussion',
+      studentName: d.student_name,
+      question: d.question,
+      response: d.student_response,
+      instructorReply: d.instructor_reply
+    }));
+  }
+
+  if (!sourceData.length) return res.status(400).json({ error: 'No data found for this selection' });
+
+  const results = [];
+
+  if (mode === 'class') {
+    // Class-wide summary
+    const summary = sourceData.map(d =>
+      d.type === 'grade'
+        ? `${d.studentName}: scored ${d.total}/${d.maxScore}, key gap: ${d.keyImprovement || 'not noted'}`
+        : `${d.studentName}: discussion post — ${(d.response || '').slice(0, 200)}`
+    ).join('\n');
+
+    try {
+      const resp = await client.messages.create({
+        model: 'claude-sonnet-4-20250514', max_tokens: 800,
+        system: `You are an instructor for ${course?.full_name || course?.name}. Generate class-wide Always-On learning recommendations based on patterns across all students.`,
+        messages: [{ role: 'user', content: `Student data:\n${summary}\n\nReturn ONLY valid JSON:\n{"overview":"2-3 sentences on common gaps","recommendations":["specific actionable item 1","specific actionable item 2","optional third item"],"resources":[{"title":"resource title","url":"https://...","why":"1 sentence why this helps"}]}` }]
+      });
+      const text = resp.content.find(b => b.type === 'text')?.text || '{}';
+      const parsed = JSON.parse(text.replace(/```json\n?|```/g, '').trim());
+      const id = uuidv4();
+      db.prepare(`INSERT INTO always_on (id,course_id,assignment_id,assignment_name,student_name,weak_area,feedback_sentences,links,status) VALUES (?,?,?,?,?,?,?,?,?)`)
+        .run(id, courseId, assignmentId || null, assignment?.name || 'Discussion', 'Class',
+          parsed.overview || 'Class-wide gaps',
+          parsed.recommendations?.join(' ') || '',
+          JSON.stringify(parsed.resources || []), 'pending');
+      results.push({ id, type: 'class', ...parsed });
+    } catch (e) { return res.status(500).json({ error: e.message }); }
+
+  } else {
+    // Per-student
+    for (const d of sourceData.slice(0, 30)) {
+      try {
+        const context = d.type === 'grade'
+          ? `Student: ${d.studentName}\nScore: ${d.total}/${d.maxScore}\nKey gap: ${d.keyImprovement || ''}\nSummary: ${d.summary || ''}`
+          : `Student: ${d.studentName}\nDiscussion response:\n${(d.response || '').slice(0, 600)}`;
+
+        const resp = await client.messages.create({
+          model: 'claude-sonnet-4-20250514', max_tokens: 600,
+          system: `You are an instructor generating a personalized Always-On learning recommendation. Be specific to what this student wrote. No sentence over 18 words. No em dashes.`,
+          messages: [{ role: 'user', content: `${context}\n\nReturn ONLY valid JSON:\n{"weakArea":"the specific gap in 5-8 words","feedback":"2-3 sentences of personalized next-step guidance","resources":[{"title":"resource","url":"https://...","why":"why this helps"}]}` }]
+        });
+        const text = resp.content.find(b => b.type === 'text')?.text || '{}';
+        const parsed = JSON.parse(text.replace(/```json\n?|```/g, '').trim());
+        const id = uuidv4();
+        db.prepare(`INSERT INTO always_on (id,course_id,assignment_id,assignment_name,student_name,weak_area,feedback_sentences,links,status) VALUES (?,?,?,?,?,?,?,?,?)`)
+          .run(id, courseId, assignmentId || null, assignment?.name || 'Discussion',
+            d.studentName, parsed.weakArea || d.keyImprovement || 'See feedback',
+            parsed.feedback || '', JSON.stringify(parsed.resources || []), 'pending');
+        results.push({ id, studentName: d.studentName, ...parsed });
+      } catch (e) { console.error('AO generate error:', d.studentName, e.message); }
+    }
+  }
+
+  res.json({ generated: results.length, results });
+});
