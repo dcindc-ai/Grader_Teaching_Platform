@@ -6,8 +6,8 @@ function h(pw) { return { 'x-admin-password': pw }; }
 
 export default function DevTab({ password }) {
   const [enabled, setEnabled] = useState(() => localStorage.getItem('dev_enabled') === 'true');
-  const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState('');
+  const [messages, setMessages] = useState(() => { try { return JSON.parse(localStorage.getItem("dev_messages") || "[]"); } catch(e) { return []; } });
+  const [input, setInput] = useState(() => localStorage.getItem("dev_input") || "");
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [gitStatus, setGitStatus] = useState(null);
@@ -26,7 +26,16 @@ export default function DevTab({ password }) {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // Persist messages to localStorage (skip action messages which have non-serializable data)
+    try {
+      const toSave = messages.filter(m => m.role !== 'action').slice(-50);
+      localStorage.setItem('dev_messages', JSON.stringify(toSave));
+    } catch(e) {}
   }, [messages]);
+
+  useEffect(() => {
+    localStorage.setItem('dev_input', input);
+  }, [input]);
 
   function toggleEnabled() {
     setEnabled(e => !e);

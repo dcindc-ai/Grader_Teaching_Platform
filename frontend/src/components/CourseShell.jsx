@@ -6,6 +6,7 @@ import StudentsTab from './StudentsTab.jsx';
 import MaterialsTab from './MaterialsTab.jsx';
 import AlwaysOnTab from './AlwaysOnTab.jsx';
 import CourseSettingsTab from './CourseSettingsTab.jsx';
+import { getAssignments } from '../api.js';
 
 const BASE = import.meta.env.PROD ? '' : 'http://localhost:3001';
 
@@ -22,12 +23,32 @@ const TABS = [
 export default function CourseShell({ course, password, onUpdateCourse, onDeleteCourse }) {
   const [tab, setTab] = useState('assignments');
   const [aoPending, setAoPending] = useState(0);
+  const [assignments, setAssignments] = useState([]);
+  const [activeAssignmentId, setActiveAssignmentId] = useState(
+    () => localStorage.getItem(`active_assign_${course.id}`) || ''
+  );
+
+  useEffect(() => {
+    getAssignments(course.id, password).then(a => {
+      setAssignments(a);
+      if (!activeAssignmentId && a.length) {
+        setActiveAssignmentId(a[0].id);
+      }
+    });
+  }, [course.id]);
 
   useEffect(() => {
     fetch(`${BASE}/api/alwayson/counts?courseId=${course.id}`, {
       headers: { 'x-admin-password': password }
     }).then(r => r.json()).then(d => setAoPending(d.pending || 0)).catch(() => {});
   }, [course.id, tab]);
+
+  function setActiveAssignment(id) {
+    setActiveAssignmentId(id);
+    localStorage.setItem(`active_assign_${course.id}`, id);
+  }
+
+  const activeAssignment = assignments.find(a => a.id === activeAssignmentId);
 
   return (
     <div className="course-shell">
@@ -37,6 +58,26 @@ export default function CourseShell({ course, password, onUpdateCourse, onDelete
           <div className="course-sidebar-inst">{course.institution}</div>
           <div className="course-sidebar-term">{course.term}</div>
         </div>
+
+        {/* Active assignment selector */}
+        <div style={{ padding: '10px 14px 12px', borderBottom: '1px solid var(--border)', marginBottom: 6 }}>
+          <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text3)', marginBottom: 5 }}>Grading</div>
+          <select
+            value={activeAssignmentId}
+            onChange={e => setActiveAssignment(e.target.value)}
+            style={{ width: '100%', fontSize: 12, padding: '5px 8px', fontWeight: 500 }}
+          >
+            {assignments.map(a => (
+              <option key={a.id} value={a.id}>{a.name}</option>
+            ))}
+          </select>
+          {activeAssignment && (
+            <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4 }}>
+              {activeAssignment.type} · {activeAssignment.maxScore} pts
+            </div>
+          )}
+        </div>
+
         <nav>
           {TABS.map(t => (
             <button
@@ -46,15 +87,33 @@ export default function CourseShell({ course, password, onUpdateCourse, onDelete
             >
               {t.label}
               {t.key === 'alwayson' && aoPending > 0 && (
-                <span className="badge" style={{ background: 'rgba(224,160,48,0.2)', color: 'var(--amber)' }}>{aoPending}</span>
+                <span className="badge" style={{ background: 'rgba(217,119,6,0.1)', color: 'var(--amber)', borderColor: 'rgba(217,119,6,0.2)' }}>{aoPending}</span>
               )}
             </button>
           ))}
         </nav>
       </aside>
+
       <div className="course-main">
-        {tab === 'assignments' && <AssignmentsTab course={course} password={password} />}
-        {tab === 'grade' && <GradeTab course={course} password={password} />}
+        {/* Active assignment banner */}
+        {activeAssignment && (tab === 'grade' || tab === 'alwayson') && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px',
+            background: `${course.color}10`, border: `1px solid ${course.color}30`,
+            borderRadius: 8, marginBottom: 16, fontSize: 13
+          }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: course.color, flexShrink: 0 }} />
+            <span>Currently grading: <strong>{activeAssignment.name}</strong></span>
+            <span style={{ color: 'var(--text3)', fontSize: 11 }}>{activeAssignment.maxScore} pts max</span>
+            <button className="ghost" style={{ fontSize: 11, marginLeft: 'auto', padding: '2px 8px' }}
+              onClick={() => setTab('assignments')}>
+              Change
+            </button>
+          </div>
+        )}
+
+        {tab === 'assignments' && <AssignmentsTab course={course} password={password} activeAssignmentId={activeAssignmentId} onSetActive={setActiveAssignment} />}
+        {tab === 'grade' && <GradeTab course={course} password={password} activeAssignmentId={activeAssignmentId} />}
         {tab === 'alwayson' && <AlwaysOnTab course={course} password={password} />}
         {tab === 'discuss' && <DiscussTab course={course} password={password} />}
         {tab === 'students' && <StudentsTab course={course} password={password} />}

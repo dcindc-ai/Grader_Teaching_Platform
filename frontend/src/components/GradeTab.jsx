@@ -9,7 +9,7 @@ function scoreColor(val, max) {
   return p >= 0.85 ? 'var(--green)' : p >= 0.6 ? 'var(--amber)' : 'var(--red)';
 }
 
-export default function GradeTab({ course, password }) {
+export default function GradeTab({ course, password, activeAssignmentId }) {
   const [assignments, setAssignments] = useState([]);
   const [selectedId, setSelectedId] = useState('');
   const [queue, setQueue] = useState([]);
@@ -23,9 +23,15 @@ export default function GradeTab({ course, password }) {
   useEffect(() => {
     getAssignments(course.id, password).then(a => {
       setAssignments(a);
-      if (a.length) setSelectedId(a[0].id);
+      if (activeAssignmentId) setSelectedId(activeAssignmentId);
+      else if (a.length) setSelectedId(a[0].id);
     });
   }, [course.id]);
+
+  // Sync when active assignment changes from sidebar
+  useEffect(() => {
+    if (activeAssignmentId) setSelectedId(activeAssignmentId);
+  }, [activeAssignmentId]);
 
   useEffect(() => {
     if (selectedId) getGrades(course.id, selectedId, password).then(setGrades);
