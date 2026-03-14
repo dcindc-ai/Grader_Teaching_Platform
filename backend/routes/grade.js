@@ -60,7 +60,8 @@ Return ONLY valid JSON, no markdown fences:
   "summary":"2-3 sentence overall assessment",
   "key_strength":"single most notable strength",
   "key_improvement":"single most important area to improve",
-  "weak_areas":["list","of","specific","weak","areas","for","always-on","targeting"]
+  "weak_areas":["list","of","specific","weak","areas","for","always-on","targeting"],
+  "instructor_paragraph":"A personalized 3-4 sentence paragraph in the instructor's voice. Start with the student's first name (extracted from the submission). Lead with genuine encouragement about something specific they did well. Then give 1-2 sentences of honest critical feedback with concrete suggestions — what to rethink, what to improve, what to add next time. End with a forward-looking note. Sound like a real mentor — warm, direct, specific. Never generic. Example tone: 'Good job Christian. You captured several important points, but I would rethink the symbology and be clearer about why this matters right out of the gate. You want to lead with the so-what before anything else. As a next step, try increasing specificity in your language — something like Jane's would give you a better reference point for vehicle identification.'"
 }`;
 }
 
@@ -192,8 +193,8 @@ router.post('/batch', upload.array('files', 50), async (req, res) => {
   res.setHeader('Connection', 'keep-alive');
 
   const insertGrade = db.prepare(`
-    INSERT INTO grades (id,course_id,assignment_id,student_name,assignment_name,file_name,total,max_score,scores,comments,summary,key_strength,key_improvement)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+    INSERT INTO grades (id,course_id,assignment_id,student_name,assignment_name,file_name,total,max_score,scores,comments,summary,key_strength,key_improvement,instructor_paragraph)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   `);
   const insertAO = db.prepare(`
     INSERT INTO always_on (id,grade_id,student_name,course_id,assignment_id,assignment_name,weak_area,feedback_sentences,links)
@@ -215,7 +216,8 @@ router.post('/batch', upload.array('files', 50), async (req, res) => {
         gradeResult.scores?.total || 0, assignment.max_score,
         JSON.stringify(gradeResult.scores || {}),
         JSON.stringify(gradeResult.comments || {}),
-        gradeResult.summary || '', gradeResult.key_strength || '', gradeResult.key_improvement || ''
+        gradeResult.summary || '', gradeResult.key_strength || '', gradeResult.key_improvement || '',
+        gradeResult.instructor_paragraph || ''
       );
 
       if (alwaysOn) {

@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS grades (
   summary TEXT,
   key_strength TEXT,
   key_improvement TEXT,
+  instructor_paragraph TEXT,
   graded_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -204,7 +205,7 @@ function parseGrade(r) {
     fileName:r.file_name, total:r.total, maxScore:r.max_score,
     scores:JSON.parse(r.scores||'{}'), comments:JSON.parse(r.comments||'{}'),
     summary:r.summary, key_strength:r.key_strength, key_improvement:r.key_improvement,
-    gradedAt:r.graded_at };
+    instructor_paragraph:r.instructor_paragraph, gradedAt:r.graded_at };
 }
 
 function parseMaterial(r) {
