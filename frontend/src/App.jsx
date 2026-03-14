@@ -9,6 +9,7 @@ export default function App() {
   const [pw, setPw] = useState(() => sessionStorage.getItem('tp_pw') || '');
   const [authed, setAuthed] = useState(false);
   const [authErr, setAuthErr] = useState('');
+  const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [courses, setCourses] = useState([]);
   const [activeCourse, setActiveCourse] = useState(null);
@@ -35,9 +36,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // Only auto-login if we have a stored password — clear it first to avoid stale cache
+    // Try stored password first, then try empty password (for no-auth mode)
     const stored = sessionStorage.getItem('tp_pw');
-    if (stored) loadAll(stored);
+    if (stored) { loadAll(stored); return; }
+    // Try no-password auto-login
+    loadAll('').catch(() => {});
   }, []); // eslint-disable-line
 
   function handleLogin(e) {
@@ -78,7 +81,12 @@ export default function App() {
           <form onSubmit={handleLogin}>
             <div className="field">
               <label>Password</label>
-              <input type="password" value={pw} onChange={e => setPw(e.target.value)} autoFocus placeholder="Admin password" />
+              <div style={{ position: 'relative' }}>
+                <input type={showPw ? 'text' : 'password'} value={pw} onChange={e => setPw(e.target.value)} autoFocus placeholder="Admin password" style={{ paddingRight: 44 }} />
+                <button type="button" onClick={() => setShowPw(s => !s)} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: 'var(--text2)', padding: '2px 4px' }}>
+                  {showPw ? '🙈' : '👁'}
+                </button>
+              </div>
             </div>
             {authErr && <div className="auth-err">{authErr}</div>}
             <button type="submit" className="primary" style={{ width: '100%', marginTop: 8 }} disabled={loading}>
