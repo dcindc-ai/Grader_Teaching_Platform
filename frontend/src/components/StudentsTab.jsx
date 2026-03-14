@@ -35,7 +35,9 @@ export default function StudentsTab({ course, password }) {
       }).filter(s => s.name);
 
       const result = await uploadRoster(course.id, parsed, password);
-      setStudents(s => [...s, ...result.students]);
+      // Reload full student list after upload
+      const updated = await getStudents(course.id, password);
+      setStudents(updated);
       setUploadResult(result);
       getProgress(course.id, password).then(setProgress);
     } catch (e) { alert('Error reading CSV: ' + e.message); }
@@ -77,7 +79,7 @@ export default function StudentsTab({ course, password }) {
 
       {uploadResult && (
         <div style={{ marginBottom: 12, padding: '8px 12px', background: 'rgba(76,175,114,0.08)', border: '1px solid var(--green)', borderRadius: 8, fontSize: 12, color: 'var(--green)' }}>
-          Added {uploadResult.added} students. {uploadResult.skipped > 0 ? `${uploadResult.skipped} skipped (already enrolled).` : ''}
+          Added {uploadResult.added} students.{uploadResult.skipped > 0 ? ` ${uploadResult.skipped} skipped (already enrolled).` : ''}{uploadResult.matched > 0 ? ` Matched ${uploadResult.matched} existing grade${uploadResult.matched !== 1 ? 's' : ''} to roster.` : ''}
         </div>
       )}
 
