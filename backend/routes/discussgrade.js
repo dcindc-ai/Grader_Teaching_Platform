@@ -96,13 +96,14 @@ Grade this submission against each criterion. Return ONLY valid JSON, no markdow
       "criterionName": "criterion name",
       "suggestedRating": "Accomplished | Proficient | Needs Improvement | Unacceptable",
       "suggestedPoints": 14.5,
-      "comment": "2-3 sentence specific comment on this criterion. Be specific about what they did well or missed.",
-      "evidence": "quote or paraphrase from their submission that supports this rating"
+      "scoringRationale": "2-3 sentences of instructor-only rationale explaining the score. Specific, references actual content, explains any deductions. This is for YOUR reference, not the student.",
+      "studentComment": "1-2 sentence comment to share with the student for this criterion. Constructive and specific.",
+      "evidence": "brief quote or paraphrase from submission supporting this rating"
     }
   ],
   "totalPoints": 72.5,
   "totalMax": 75,
-  "instructorParagraph": "3-4 sentence personalized feedback paragraph in instructor voice. Start with first name, acknowledge specific strengths, give honest critical feedback, forward-looking close. No em dashes.",
+  "instructorParagraph": "Personalized 3-4 sentence paragraph in instructor voice to share with student. Start with first name. Acknowledge one specific strength. Give honest critical feedback with concrete suggestion. End with a forward-looking, encouraging close. No em dashes. Warm but direct.",
   "overallSummary": "1-2 sentence overall assessment"
 }`;
 
@@ -146,3 +147,256 @@ Grade this submission against each criterion. Return ONLY valid JSON, no markdow
 });
 
 module.exports = router;
+
+// POST /api/discussgrade/regenerate-feedback
+router.post('/regenerate-feedback', async (req, res) => {
+  const { studentName, overallSummary, criteriaGrades, rubricCriteria,
+          tone, length, directness, instructorBio } = req.body;
+
+  const toneDesc = {
+    formal: 'formal, academic, professional',
+    plain: 'plain, conversational, direct — like talking to the student in office hours',
+    warm: 'warm, encouraging, mentor-like'
+  }[tone] || 'warm, direct, mentor-like';
+
+  const lengthDesc = {
+    short: '2-3 sentences, tight and punchy',
+    medium: '3-4 sentences, standard',
+    long: '4-5 sentences, more detailed'
+  }[length] || '3-4 sentences';
+
+  const directnessDesc = {
+    soft: 'gentle, softening critical feedback',
+    balanced: 'balanced, honest but kind',
+    direct: 'direct and frank, no sugar-coating'
+  }[directness] || 'balanced';
+
+  const summary = criteriaGrades?.map(cg =>
+    `${cg.criterionName}: ${cg.suggestedRating || ''} (${cg.suggestedPoints || 0}pts) — ${cg.scoringRationale || cg.studentComment || ''}`
+  ).join('\n');
+
+  try {
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const resp = await client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 400,
+      system: `You are ${instructorBio || 'an instructor'} writing personalized feedback to a student.
+Tone: ${toneDesc}
+Length: ${lengthDesc}
+Directness: ${directnessDesc}
+Never use em dashes. Start with the student's first name.`,
+      messages: [{
+        role: 'user',
+        content: `Student: ${studentName}
+Overall: ${overallSummary || ''}
+Criterion scores:
+${summary}
+
+Write the instructor feedback paragraph with the specified tone, length, and directness.
+Return ONLY the paragraph text, nothing else.`
+      }]
+    });
+    const paragraph = resp.content.find(b => b.type === 'text')?.text?.trim() || '';
+    res.json({ paragraph });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/discussgrade/docx/:gradeId — download feedback as Word doc
+router.get('/docx', async (req, res) => {
+  const { studentName, courseName, assignmentName, date, criteria, feedback } = req.query;
+
+  try {
+    let gradeData;
+    try {
+      gradeData = JSON.parse(decodeURIComponent(req.query.data || '{}'));
+    } catch (e) {
+      return res.status(400).json({ error: 'Invalid data' });
+    }
+
+    const {
+      Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
+      AlignmentType, BorderStyle, WidthType, ShadingType, HeadingLevel
+    } = require('docx');
+
+    const border = { style: BorderStyle.SINGLE, size: 4, color: '999999' };
+    const borders = { top: border, bottom: border, left: border, right: border };
+    const headerBg = { fill: '1E3A5F', type: ShadingType.CLEAR };
+    const altBg = { fill: 'F0F4F8', type: ShadingType.CLEAR };
+
+    const children = [];
+
+    // Title
+    children.push(new Paragraph({
+      children: [new TextRun({ text: 'Discussion Grading Feedback', bold: true, size: 32, font: 'Calibri', color: '1E3A5F' })],
+      spacing: { after: 160 }
+    }));
+
+    // Course info
+    [
+      ['Course', gradeData.courseName || 'AIN 714 — AI Strategy and Innovation'],
+      ['Assignment', gradeData.assignmentName || ''],
+      ['Student', gradeData.studentName || ''],
+      ['Date', gradeData.date || new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })]
+    ].forEach(([label, value]) => {
+      children.push(new Paragraph({
+        children: [
+          new TextRun({ text: `${label}: `, bold: true, size: 22, font: 'Calibri' }),
+          new TextRun({ text: value, size: 22, font: 'Calibri' })
+        ],
+        spacing: { after: 60 }
+      }));
+    });
+
+    children.push(new Paragraph({ spacing: { after: 200 } }));
+
+    // Section: Rubric Scores
+    children.push(new Paragraph({
+      children: [new TextRun({ text: 'Rubric Scores', bold: true, size: 26, font: 'Calibri', color: '1E3A5F' })],
+      spacing: { after: 120 }
+    }));
+
+    // Rubric table
+    const rubricRows = [
+      // Header
+      new TableRow({
+        children: [
+          new TableCell({
+            borders, width: { size: 4500, type: WidthType.DXA },
+            shading: headerBg, margins: { top: 80, bottom: 80, left: 120, right: 120 },
+            children: [new Paragraph({ children: [new TextRun({ text: 'Criterion', bold: true, size: 20, font: 'Calibri', color: 'FFFFFF' })] })]
+          }),
+          new TableCell({
+            borders, width: { size: 2500, type: WidthType.DXA },
+            shading: headerBg, margins: { top: 80, bottom: 80, left: 120, right: 120 },
+            children: [new Paragraph({ children: [new TextRun({ text: 'Rating', bold: true, size: 20, font: 'Calibri', color: 'FFFFFF' })] })]
+          }),
+          new TableCell({
+            borders, width: { size: 2360, type: WidthType.DXA },
+            shading: headerBg, margins: { top: 80, bottom: 80, left: 120, right: 120 },
+            children: [new Paragraph({ children: [new TextRun({ text: 'Score', bold: true, size: 20, font: 'Calibri', color: 'FFFFFF' })] })]
+          })
+        ]
+      })
+    ];
+
+    const criteriaData = gradeData.criteriaGrades || [];
+    let total = 0;
+    let totalMax = 0;
+
+    criteriaData.forEach((cg, i) => {
+      const pts = parseFloat(cg.finalPoints || cg.suggestedPoints || 0);
+      const maxPts = cg.maxPoints || 15;
+      total += pts;
+      totalMax += maxPts;
+      const shading = i % 2 === 1 ? altBg : { fill: 'FFFFFF', type: ShadingType.CLEAR };
+
+      rubricRows.push(new TableRow({
+        children: [
+          new TableCell({
+            borders, width: { size: 4500, type: WidthType.DXA },
+            shading, margins: { top: 80, bottom: 80, left: 120, right: 120 },
+            children: [new Paragraph({ children: [new TextRun({ text: cg.criterionName || '', size: 20, font: 'Calibri' })] })]
+          }),
+          new TableCell({
+            borders, width: { size: 2500, type: WidthType.DXA },
+            shading, margins: { top: 80, bottom: 80, left: 120, right: 120 },
+            children: [new Paragraph({ children: [new TextRun({ text: cg.suggestedRating || '', size: 20, font: 'Calibri' })] })]
+          }),
+          new TableCell({
+            borders, width: { size: 2360, type: WidthType.DXA },
+            shading, margins: { top: 80, bottom: 80, left: 120, right: 120 },
+            children: [new Paragraph({ children: [new TextRun({ text: `${pts}/${maxPts}`, bold: true, size: 20, font: 'Calibri' })] })]
+          })
+        ]
+      }));
+    });
+
+    // Total row
+    rubricRows.push(new TableRow({
+      children: [
+        new TableCell({
+          borders, width: { size: 4500, type: WidthType.DXA },
+          shading: headerBg, margins: { top: 80, bottom: 80, left: 120, right: 120 },
+          children: [new Paragraph({ children: [new TextRun({ text: 'TOTAL', bold: true, size: 22, font: 'Calibri', color: 'FFFFFF' })] })]
+        }),
+        new TableCell({
+          borders, width: { size: 2500, type: WidthType.DXA },
+          shading: headerBg, margins: { top: 80, bottom: 80, left: 120, right: 120 },
+          children: [new Paragraph({ children: [new TextRun({ text: '', size: 20, font: 'Calibri' })] })]
+        }),
+        new TableCell({
+          borders, width: { size: 2360, type: WidthType.DXA },
+          shading: headerBg, margins: { top: 80, bottom: 80, left: 120, right: 120 },
+          children: [new Paragraph({ children: [new TextRun({ text: `${total.toFixed(0)}/${totalMax}`, bold: true, size: 22, font: 'Calibri', color: 'FFFFFF' })] })]
+        })
+      ]
+    }));
+
+    children.push(new Table({
+      width: { size: 9360, type: WidthType.DXA },
+      columnWidths: [4500, 2500, 2360],
+      rows: rubricRows
+    }));
+
+    children.push(new Paragraph({ spacing: { after: 240 } }));
+
+    // Section: Scoring Rationale
+    children.push(new Paragraph({
+      children: [new TextRun({ text: 'Scoring Rationale (Instructor Reference)', bold: true, size: 26, font: 'Calibri', color: '1E3A5F' })],
+      spacing: { after: 120 }
+    }));
+
+    criteriaData.forEach(cg => {
+      if (!cg.scoringRationale && !cg.studentComment) return;
+      children.push(new Paragraph({
+        children: [new TextRun({ text: `${cg.criterionName} (${cg.finalPoints || cg.suggestedPoints}/${cg.maxPoints || 15})`, bold: true, size: 22, font: 'Calibri' })],
+        spacing: { before: 160, after: 60 }
+      }));
+      const rationale = cg.scoringRationale || cg.studentComment || '';
+      children.push(new Paragraph({
+        children: [new TextRun({ text: rationale, size: 20, font: 'Calibri' })],
+        spacing: { after: 80 }
+      }));
+    });
+
+    children.push(new Paragraph({ spacing: { after: 200 } }));
+
+    // Section: Instructor Feedback
+    children.push(new Paragraph({
+      children: [new TextRun({ text: 'Instructor Feedback to Student', bold: true, size: 26, font: 'Calibri', color: '1E3A5F' })],
+      spacing: { after: 120 }
+    }));
+
+    const feedbackText = gradeData.instructorParagraph || '';
+    const sentences = feedbackText.split(/(?<=[.!?])\s+/).filter(Boolean);
+    sentences.forEach(sentence => {
+      children.push(new Paragraph({
+        indent: { left: 720 },
+        children: [new TextRun({ text: sentence, size: 22, font: 'Calibri', italics: true })],
+        spacing: { after: 80 },
+        border: { left: { style: BorderStyle.SINGLE, size: 12, color: '2563EB', space: 8 } }
+      }));
+    });
+
+    const doc = new Document({
+      styles: { default: { document: { run: { font: 'Calibri', size: 22 } } } },
+      sections: [{
+        properties: {
+          page: { size: { width: 12240, height: 15840 }, margin: { top: 1080, right: 1080, bottom: 1080, left: 1080 } }
+        },
+        children
+      }]
+    });
+
+    const buffer = await Packer.toBuffer(doc);
+    const safe = (gradeData.studentName || 'student').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename="${safe}_discussion_feedback.docx"`);
+    res.send(buffer);
+  } catch (e) {
+    console.error('DOCX error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
