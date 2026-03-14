@@ -56,3 +56,53 @@ router.delete('/:id/examples/:exId', (req, res) => {
 });
 
 module.exports = router;
+
+// POST /api/assignments/parse-pdf — extract assignment info from uploaded PDF
+const multer = require('multer');
+const upload2 = multer({ dest: './uploads/', limits: { fileSize: 25 * 1024 * 1024 } });
+
+router.post('/parse-pdf', upload2.single('file'), async (req, res) => {
+  const file = req.file;
+  if (!file) return res.status(400).json({ error: 'No file uploaded' });
+
+  const Anthropic = require('@anthropic-ai/sdk');
+  const fs = require('fs');
+
+  try {
+    const base64 = fs.readFileSync(file.path).toString('base64');
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+    const resp = await client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 2000,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } },
+          { type: 'text', text: `Extract assignment information from this document and return ONLY valid JSON, no markdown fences:
+{
+  "name": "short assignment name e.g. Lab 1",
+  "type": "lab or discussion or paper or project",
+  "maxScore": 6,
+  "description": "full assignment description and instructions",
+  "rubric": "complete rubric text with point values",
+  "components": [
+    {"name": "Component name", "maxPoints": 2, "description": "what this component measures"}
+  ]
+}
+
+Extract everything you can see. For maxScore, add up all the point values in the rubric. For components, identify each separately graded section.` }
+        ]
+      }]
+    });
+
+    try { fs.unlinkSync(file.path); } catch (e) {}
+
+    const text = resp.content.find(b => b.type === 'text')?.text || '{}';
+    const parsed = JSON.parse(text.replace(/```json\n?|```/g, '').trim());
+    res.json(parsed);
+  } catch (e) {
+    try { fs.unlinkSync(file.path); } catch (_) {}
+    res.status(500).json({ error: e.message });
+  }
+});
