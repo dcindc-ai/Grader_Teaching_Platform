@@ -1,7 +1,8 @@
+import DiscussGrader from './DiscussGrader.jsx';
 import { useState } from 'react';
 import { generateReply, generateSummary } from '../api.js';
 
-export default function DiscussTab({ course, password, session, onSession }) {
+export default function DiscussTab({ course, password, session, onSession, assignments }) {
   const submissions = session?.submissions || [];
   const savedQuestion = session?.question || '';
   const [question, setQuestion] = useState(savedQuestion || course.discussionDefaultQuestion || '');
@@ -14,7 +15,7 @@ export default function DiscussTab({ course, password, session, onSession }) {
   const [summary, setSummary] = useState('');
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryCopied, setSummaryCopied] = useState(false);
-  const [view, setView] = useState('respond');
+  const [view, setView] = useState('respond'); // 'respond' | 'summary' | 'grade'
   const [studentAnswer, setStudentAnswer] = useState('');
 
   async function handleGenerate() {
@@ -88,7 +89,7 @@ export default function DiscussTab({ course, password, session, onSession }) {
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
-        {['respond', 'summary'].map(t => (
+        {['respond', 'summary', 'grade'].map(t => (
           <button key={t} onClick={() => setView(t)} style={{
             flex: 1, padding: 10, fontSize: 12, letterSpacing: '0.05em',
             background: view === t ? color : 'var(--bg3)',
@@ -96,7 +97,7 @@ export default function DiscussTab({ course, password, session, onSession }) {
             border: `1px solid ${view === t ? color : 'var(--border2)'}`,
             fontWeight: view === t ? 500 : 400
           }}>
-            {t === 'respond' ? 'Respond to Student' : `Class Summary${submissions.length > 0 ? ` (${submissions.length})` : ''}`}
+            {t === 'respond' ? 'Respond to Student' : t === 'summary' ? `Class Summary${submissions.length > 0 ? ` (${submissions.length})` : ''}` : '🎯 Grade Discussion'}
           </button>
         ))}
       </div>

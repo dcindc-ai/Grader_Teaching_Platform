@@ -137,7 +137,8 @@ export default function CourseShell({
         {tab === 'alwayson' && <AlwaysOnTab course={course} password={password} />}
         {tab === 'discuss' && (
           <DiscussTab course={course} password={password}
-            session={discussSession} onSession={onDiscussSession} />
+            session={discussSession} onSession={onDiscussSession}
+            assignments={assignments} />
         )}
         {tab === 'students' && <StudentsTab course={course} password={password} />}
         {tab === 'materials' && <MaterialsTab course={course} password={password} />}
