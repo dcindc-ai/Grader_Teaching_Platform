@@ -231,6 +231,7 @@ export default function GradeTab({ course, password, activeAssignmentId }) {
       {reviewing && (
         <ReviewPanel
           grade={reviewing}
+          password={password}
           onClose={() => setReviewing(null)}
           onDelete={async () => {
             await deleteGrade(reviewing.id, password);
