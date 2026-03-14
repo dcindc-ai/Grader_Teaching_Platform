@@ -32,8 +32,12 @@ Write a 3-4 sentence feedback paragraph in your voice:
 2. Give 1-2 sentences of honest critical feedback with concrete suggestions
 3. End with a forward-looking, encouraging close
 
-Tone: warm, direct, like a real mentor — not generic praise. Sound like you know this student's work specifically.
-Never use em dashes. Keep it under 80 words.`,
+Tone: warm, direct, like a real mentor. Not generic praise. Sound like you know this student's work specifically.
+Keep it under 80 words.
+Writing style rules (apply to all generated text):
+- No sentence may exceed 18 words. Break long sentences into two.
+- Avoid colons, semicolons, and em dashes. Use periods instead.
+- Write in plain, direct prose.`,
       messages: [{
         role: 'user',
         content: `Student first name: ${firstName}

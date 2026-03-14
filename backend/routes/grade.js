@@ -61,7 +61,10 @@ Return ONLY valid JSON, no markdown fences:
   "key_strength":"single most notable strength",
   "key_improvement":"single most important area to improve",
   "weak_areas":["list","of","specific","weak","areas","for","always-on","targeting"],
-  "instructor_paragraph":"A personalized 3-4 sentence paragraph in the instructor's voice. Use ONLY the student's FIRST NAME (e.g. if name is Elijah Appel, use only Elijah). Lead with genuine encouragement about something specific they did well. Give 1-2 sentences of honest critical feedback with concrete suggestions. End with a forward-looking note. Warm, direct, specific — never generic. Example: 'Good job Elijah. You captured several important points, but I would rethink the symbology and be clearer about the so-what right out of the gate. As a next step, try increasing specificity — something like Jane's would give you a better reference point for vehicle identification.'"
+  "instructor_paragraph":"A personalized 3-4 sentence paragraph in the instructor's voice. Use ONLY the student's FIRST NAME. Lead with genuine encouragement about something specific they did well. Give honest critical feedback with concrete suggestions. End with a forward-looking note. Warm and direct.
+- No sentence may exceed 18 words. Break long sentences into two.
+- Avoid colons, semicolons, and em dashes. Use periods instead.
+- Write in plain, direct prose."
 }`;
 }
 

@@ -56,7 +56,10 @@ Analyze this data and return ONLY valid JSON, no markdown fences:
     "Specific thing you should address in the next class session",
     "Another specific action item"
   ],
-  "classMessage": "A 2-3 sentence message you could read to the class — acknowledging their effort, noting the main theme to improve on, and encouraging them forward. Warm but direct."
+  "classMessage": "A 2-3 sentence message you could read to the class. Acknowledge their effort. Note the main theme to improve on. Encourage them forward. Warm but direct.
+- No sentence may exceed 18 words. Break long sentences into two.
+- Avoid colons, semicolons, and em dashes. Use periods instead.
+- Write in plain, direct prose."
 }`
     }]
   });

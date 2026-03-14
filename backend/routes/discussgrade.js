@@ -103,7 +103,10 @@ Grade this submission against each criterion. Return ONLY valid JSON, no markdow
   ],
   "totalPoints": 72.5,
   "totalMax": 75,
-  "instructorParagraph": "Personalized 3-4 sentence paragraph in instructor voice to share with student. Start with first name. Acknowledge one specific strength. Give honest critical feedback with concrete suggestion. End with a forward-looking, encouraging close. No em dashes. Warm but direct.",
+  "instructorParagraph": "Personalized 3-4 sentence paragraph in instructor voice. Start with first name. Acknowledge one specific strength. Give honest critical feedback with a concrete suggestion. End with an encouraging close. Warm but direct.
+- No sentence may exceed 18 words. Break long sentences into two.
+- Avoid colons, semicolons, and em dashes. Use periods instead.
+- Write in plain, direct prose.",
   "overallSummary": "1-2 sentence overall assessment"
 }`;
 
@@ -184,7 +187,11 @@ router.post('/regenerate-feedback', async (req, res) => {
 Tone: ${toneDesc}
 Length: ${lengthDesc}
 Directness: ${directnessDesc}
-Never use em dashes. Start with the student's first name.`,
+Start with the student's first name.
+Writing style rules (apply to all generated text):
+- No sentence may exceed 18 words. Break long sentences into two.
+- Avoid colons, semicolons, and em dashes. Use periods instead.
+- Write in plain, direct prose.`,
       messages: [{
         role: 'user',
         content: `Student: ${studentName}
