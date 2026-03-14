@@ -1,73 +1,43 @@
 const express = require('express');
+const { v4: uuidv4 } = require('uuid');
+const { db, parseCourse } = require('../db');
 const router = express.Router();
-const { readJSON, writeJSON, uuid, now } = require('../data/helpers');
-const { DEFAULT_COURSES } = require('../data/seed');
 
-const PATH = './data/courses.json';
-
-function getCourses() {
-  const saved = readJSON(PATH, null);
-  if (!saved) {
-    writeJSON(PATH, DEFAULT_COURSES);
-    return DEFAULT_COURSES;
-  }
-  return saved;
-}
-
-function saveCourses(courses) {
-  writeJSON(PATH, courses);
-}
-
-// GET all courses
 router.get('/', (req, res) => {
-  res.json(getCourses());
+  const rows = db.prepare('SELECT * FROM courses ORDER BY created_at ASC').all();
+  res.json(rows.map(parseCourse));
 });
 
-// GET single course
 router.get('/:id', (req, res) => {
-  const course = getCourses().find(c => c.id === req.params.id);
-  if (!course) return res.status(404).json({ error: 'Course not found' });
-  res.json(course);
+  const row = db.prepare('SELECT * FROM courses WHERE id = ?').get(req.params.id);
+  if (!row) return res.status(404).json({ error: 'Not found' });
+  res.json(parseCourse(row));
 });
 
-// POST create course
 router.post('/', (req, res) => {
-  const courses = getCourses();
-  const course = {
-    id: uuid(),
-    name: '',
-    fullName: '',
-    institution: '',
-    term: '',
-    color: '#4f8ef7',
-    colorDark: '#3d7ce8',
-    colorFaint: 'rgba(79,142,247,0.12)',
-    instructorBio: '',
-    voiceGuidelines: '',
-    discussionDefaultQuestion: '',
-    sliders: { clarity: 3, logic: 3, structure: 3, tone: 3, style: 3 },
-    createdAt: now(),
-    ...req.body
-  };
-  courses.push(course);
-  saveCourses(courses);
-  res.json(course);
+  const b = req.body;
+  const id = uuidv4();
+  db.prepare(`INSERT INTO courses (id,name,full_name,institution,term,color,color_dark,color_faint,instructor_bio,voice_guidelines,discussion_default_question,sliders)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(id, b.name||'New Course', b.fullName||'', b.institution||'', b.term||'',
+      b.color||'#4f8ef7', b.colorDark||'#3d7ce8', b.colorFaint||'rgba(79,142,247,0.12)',
+      b.instructorBio||'', b.voiceGuidelines||'', b.discussionDefaultQuestion||'',
+      JSON.stringify(b.sliders||{clarity:3,logic:3,structure:3,tone:3,style:3}));
+  res.json(parseCourse(db.prepare('SELECT * FROM courses WHERE id=?').get(id)));
 });
 
-// PUT update course
 router.put('/:id', (req, res) => {
-  const courses = getCourses();
-  const idx = courses.findIndex(c => c.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'Course not found' });
-  courses[idx] = { ...courses[idx], ...req.body, id: req.params.id };
-  saveCourses(courses);
-  res.json(courses[idx]);
+  const b = req.body;
+  db.prepare(`UPDATE courses SET name=?,full_name=?,institution=?,term=?,color=?,color_dark=?,color_faint=?,
+    instructor_bio=?,voice_guidelines=?,discussion_default_question=?,sliders=? WHERE id=?`)
+    .run(b.name, b.fullName, b.institution, b.term, b.color, b.colorDark||b.color,
+      b.colorFaint||`${b.color}22`, b.instructorBio, b.voiceGuidelines,
+      b.discussionDefaultQuestion, JSON.stringify(b.sliders), req.params.id);
+  res.json(parseCourse(db.prepare('SELECT * FROM courses WHERE id=?').get(req.params.id)));
 });
 
-// DELETE course
 router.delete('/:id', (req, res) => {
-  const courses = getCourses().filter(c => c.id !== req.params.id);
-  saveCourses(courses);
+  db.prepare('DELETE FROM courses WHERE id=?').run(req.params.id);
   res.json({ ok: true });
 });
 

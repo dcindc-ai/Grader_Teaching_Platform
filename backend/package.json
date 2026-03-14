@@ -1,6 +1,6 @@
 {
   "name": "teaching-platform-backend",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -9,10 +9,14 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "archiver": "^7.0.1",
+    "better-sqlite3": "^9.4.3",
     "cors": "^2.8.5",
     "express": "^4.18.2",
+    "mammoth": "^1.7.2",
     "multer": "^1.4.5-lts.1",
+    "officeparser": "^4.1.2",
     "pdf-lib": "^1.17.1",
+    "pdf-parse": "^1.1.1",
     "uuid": "^9.0.0"
   },
   "devDependencies": {
