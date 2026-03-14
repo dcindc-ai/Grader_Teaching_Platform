@@ -1,6 +1,6 @@
 const express = require('express');
 const Anthropic = require('@anthropic-ai/sdk');
-const { db, parseGrade } = require('../db');
+const { db, parseGrade, firstName } = require('../db');
 const router = express.Router();
 
 const SECTION_LABELS = {
@@ -27,7 +27,7 @@ router.post('/regenerate/:gradeId', async (req, res) => {
       system: `You are ${course?.instructor_bio ? 'Dave Cook, ' + course.instructor_bio : 'an instructor'} giving personalized feedback to a student.
 
 Write a 3-4 sentence feedback paragraph in your voice:
-1. Start with the student's first name and a genuine, specific compliment about something they did well
+1. Start with the student's FIRST NAME ONLY (not full name) and a genuine, specific compliment about something they did well
 2. Give 1-2 sentences of honest critical feedback with concrete suggestions
 3. End with a forward-looking, encouraging close
 

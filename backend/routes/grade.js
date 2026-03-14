@@ -3,7 +3,7 @@ const multer = require('multer');
 const fs = require('fs');
 const Anthropic = require('@anthropic-ai/sdk');
 const { v4: uuidv4 } = require('uuid');
-const { db, parseGrade } = require('../db');
+const { db, parseGrade, firstName } = require('../db');
 
 const router = express.Router();
 const upload = multer({ dest: './uploads/', limits: { fileSize: 25 * 1024 * 1024 } });
