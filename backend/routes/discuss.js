@@ -4,76 +4,85 @@ const { v4: uuidv4 } = require('uuid');
 const { db } = require('../db');
 const router = express.Router();
 
-function parseCourseRow(row) {
-  if (!row) return null;
-  return { ...row, sliders: JSON.parse(row.sliders||'{}') };
-}
-
-function buildReplyPrompt(course, question, count) {
-  const isFour = count === 4;
-  const qPos = isFour ? 'THIRD' : 'FOURTH';
-  const cPos = isFour ? 'FOURTH' : 'FIFTH';
-  const cWord = isFour ? 'FOUR' : 'FIVE';
-  const cLow = isFour ? 'four' : 'five';
+function buildReplyPrompt({ course, question, tone, sentenceCount, wordsPerSentence, structure }) {
   const bio = course.instructor_bio ? `About you:\n${course.instructor_bio}\n\n` : '';
-  const voice = course.voice_guidelines || 'Casual, direct, warm, real. Sharp mentor. Plain language.';
 
-  return `You are the instructor for ${course.full_name} (${course.name}) at ${course.institution}.
+  const toneDesc = {
+    warm: 'warm, mentor-like, encouraging but honest',
+    direct: 'plain and direct — no softening, just clear honest feedback',
+    formal: 'professional and academic in register'
+  }[tone] || 'warm but direct';
 
-${bio}Your voice: ${voice}
+  const structureDesc = {
+    organized: 'organized — start with what worked, then name weaknesses explicitly, then close with forward direction',
+    flowing: 'flowing prose — weave strengths and weaknesses together naturally',
+    critical: 'lead with the gaps first, then acknowledge strengths, then close'
+  }[structure] || 'organized';
+
+  return `You are the instructor for ${course.full_name || course.name} at ${course.institution || 'Wake Forest University'}.
+${bio}
+Tone: ${toneDesc}
+Structure: ${structureDesc}
+Sentence count: exactly ${sentenceCount} sentences
+Max words per sentence: ${wordsPerSentence} words — strictly enforced, break any longer sentence into two
+No colons, semicolons, or em dashes — use periods only
+Use the student's first name once, at the start
 
 The discussion question was:
 ---
 ${question}
 ---
 
-Generate your instructor reply with EXACTLY these rules:
-1. Exactly ${cWord} sentences. No more, no fewer.
-2. First sentence: short warm direct address. Example: "Hey Maria, really strong intro here." Never restate or quote the student's post.
-3. Each sentence max 15 words.
-4. The ${qPos} sentence must be a genuine curious question sparked by something specific they wrote.
-5. The ${cPos} sentence closes warmly — commending but not over the top. Sound real.
-6. Casual openers, contractions, plain English. No em dashes.
-7. Student's first name EXACTLY ONCE, first sentence only.
-8. Never restate, summarize, or quote student content. React to it.
-9. Engage with one specific interesting thing they wrote. No generic praise.
+Write a feedback paragraph that:
+1. Addresses what the student did specifically well (reference their actual content)
+2. Names the 1-2 weakest areas explicitly and directly
+3. If a required element is missing (e.g. a citation, a peer response, a direct answer to the prompt question), call it out by name
+4. Notes any peer responses specifically if they are strong or weak
+5. Closes with a concrete forward-looking instruction
 
-Return ONLY the ${cLow} sentences. Nothing else.`;
+Do NOT restate or summarize the prompt. Do NOT be generic. Reference specific things from their post.
+Return ONLY the feedback paragraph. Nothing else.`;
 }
 
 function buildSummaryPrompt(course, question) {
   const bio = course.instructor_bio ? `About you:\n${course.instructor_bio}\n\n` : '';
-  return `You are the instructor for ${course.full_name} at ${course.institution}.
+  return `You are the instructor for ${course.full_name || course.name} at ${course.institution}.
 ${bio}
 The discussion question was:
 ---
 ${question}
 ---
-Write a warm class summary: highlight common themes, interesting patterns, 2-3 compelling ideas, and end with encouragement. Casual, direct tone. No bullet points. Under 200 words. Will be shared with students.`;
+Write a warm class summary: highlight common themes, interesting patterns, 2-3 compelling ideas, and end with encouragement.
+Casual, direct tone. No bullet points. Under 200 words. Will be shared with students.
+No sentence over 18 words. No em dashes, colons, or semicolons.`;
 }
 
 async function callClaude(system, userMessage) {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const resp = await client.messages.create({
-    model: 'claude-sonnet-4-20250514', max_tokens: 500, system,
+    model: 'claude-sonnet-4-20250514', max_tokens: 800, system,
     messages: [{ role: 'user', content: userMessage }]
   });
   return resp.content.find(b => b.type === 'text')?.text?.trim() || '';
 }
 
 router.post('/reply', async (req, res) => {
-  const { courseId, question, studentName, studentResponse } = req.body;
+  const {
+    courseId, question, studentName, studentResponse,
+    tone = 'warm', sentenceCount = 6, wordsPerSentence = 18, structure = 'organized'
+  } = req.body;
+
   const course = db.prepare('SELECT * FROM courses WHERE id=?').get(courseId);
   if (!course) return res.status(400).json({ error: 'Course not found' });
-  const count = Math.random() < 0.5 ? 4 : 5;
+
   try {
     const reply = await callClaude(
-      buildReplyPrompt(course, question, count),
-      `Student name: ${studentName}\n\nStudent answer:\n${studentResponse}\n\nWrite only your instructor reply.`
+      buildReplyPrompt({ course, question, tone, sentenceCount, wordsPerSentence, structure }),
+      `Student name: ${studentName}\n\nStudent submission:\n${studentResponse}\n\nWrite your instructor feedback paragraph.`
     );
     const id = uuidv4();
     db.prepare('INSERT INTO discussions (id,course_id,question,student_name,student_response,instructor_reply,sentence_count) VALUES (?,?,?,?,?,?,?)')
-      .run(id, courseId, question, studentName, studentResponse, reply, count);
+      .run(id, courseId, question, studentName, studentResponse, reply, sentenceCount);
     res.json({ reply, id });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
