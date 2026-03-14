@@ -1,23 +1,18 @@
-import { useState, useRef } from 'react';
-import { getAssignments, addExample } from '../api.js';
-import { useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { getAssignments, addExample, getExamples, deleteExample } from '../api.js';
 
 const BASE = import.meta.env.PROD ? '' : 'http://localhost:3001';
-
 const SCORES = [3, 3.5, 4, 4.5, 5, 5.5, 6];
 
 export default function LabelTab({ course, password }) {
   const [assignments, setAssignments] = useState([]);
   const [assignmentId, setAssignmentId] = useState('');
-  const [queue, setQueue] = useState([]); // {file, name, status, preview}
-  const [current, setCurrent] = useState(0);
-  const [score, setScore] = useState('4');
-  const [quality, setQuality] = useState('good');
-  const [notes, setNotes] = useState('');
-  const [additionalComments, setAdditionalComments] = useState('');
+  const [queue, setQueue] = useState([]);
+  const [selectedIdx, setSelectedIdx] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(0);
   const [parsing, setParsing] = useState(false);
+  const [savedExamples, setSavedExamples] = useState([]);
+  const [view, setView] = useState('queue'); // 'queue' | 'saved'
   const fileRef = useRef();
 
   useEffect(() => {
@@ -27,18 +22,27 @@ export default function LabelTab({ course, password }) {
     });
   }, [course.id]);
 
+  useEffect(() => {
+    if (assignmentId) {
+      getExamples(assignmentId, password).then(setSavedExamples);
+    }
+  }, [assignmentId]);
+
+  const assignment = assignments.find(a => a.id === assignmentId);
+  const pending = queue.filter(x => x.status === 'pending').length;
+  const done = queue.filter(x => x.status === 'saved').length;
+  const allDone = queue.length > 0 && pending === 0;
+
   async function parsePDF(file) {
     const fd = new FormData();
     fd.append('file', file);
     try {
       const r = await fetch(`${BASE}/api/label/parse`, {
-        method: 'POST',
-        headers: { 'x-admin-password': password },
-        body: fd
+        method: 'POST', headers: { 'x-admin-password': password }, body: fd
       });
       return await r.json();
     } catch (e) {
-      return { studentName: file.name.replace(/\.[^.]+$/, ''), comments: '', error: e.message };
+      return { studentName: file.name.replace(/\.[^.]+$/, ''), comments: '' };
     }
   }
 
@@ -47,292 +51,424 @@ export default function LabelTab({ course, password }) {
     if (!pdfs.length) return;
     setParsing(true);
 
-    const items = [];
+    const newItems = [];
     for (const file of pdfs) {
+      const existing = queue.find(q => q.name === file.name);
+      if (existing) continue;
       const parsed = await parsePDF(file);
-      items.push({
+      newItems.push({
+        id: `q-${Date.now()}-${Math.random()}`,
         file,
         name: file.name,
-        studentName: parsed.studentName || file.name.replace('.pdf',''),
+        studentName: parsed.studentName || file.name.replace('.pdf', ''),
         extractedComments: parsed.comments || '',
-        pageCount: parsed.pageCount || 1,
+        additionalContext: '',
+        score: '4',
+        quality: 'good',
+        notes: '',
         status: 'pending'
       });
     }
 
-    setQueue(q => [...q, ...items]);
+    setQueue(q => [...q, ...newItems]);
+    if (newItems.length > 0 && selectedIdx === null) setSelectedIdx(0);
     setParsing(false);
-    if (queue.length === 0) setCurrent(0);
   }
 
-  async function saveAndNext() {
-    if (!queue[current] || !assignmentId) return;
-    setSaving(true);
-    const item = queue[current];
+  function updateItem(id, updates) {
+    setQueue(q => q.map(x => x.id === id ? { ...x, ...updates } : x));
+  }
 
+  function removeFromQueue(id) {
+    const idx = queue.findIndex(x => x.id === id);
+    setQueue(q => q.filter(x => x.id !== id));
+    if (selectedIdx !== null) {
+      const newQueue = queue.filter(x => x.id !== id);
+      if (newQueue.length === 0) setSelectedIdx(null);
+      else setSelectedIdx(Math.min(selectedIdx, newQueue.length - 1));
+    }
+  }
+
+  async function saveItem(item) {
+    if (!item || !assignmentId) return;
+    setSaving(true);
     const content = [
       item.extractedComments,
-      additionalComments ? `\nAdditional instructor notes:\n${additionalComments}` : ''
+      item.additionalContext ? `\nAdditional context:\n${item.additionalContext}` : ''
     ].filter(Boolean).join('\n');
 
     try {
-      await addExample(assignmentId, {
+      const ex = await addExample(assignmentId, {
         courseId: course.id,
         studentName: item.studentName,
-        score: parseFloat(score),
-        quality,
-        notes: notes || `Historical calibration example — score ${score}`,
+        score: parseFloat(item.score),
+        quality: item.quality,
+        notes: item.notes || `Historical example — ${item.score}/${assignment?.maxScore || 6}`,
         content
       }, password);
-
-      setQueue(q => q.map((x, i) => i === current ? { ...x, status: 'saved', savedScore: score } : x));
-      setSaved(s => s + 1);
-
-      // Move to next pending
-      const nextIdx = queue.findIndex((x, i) => i > current && x.status === 'pending');
-      if (nextIdx >= 0) {
-        setCurrent(nextIdx);
-      } else {
-        const anyPending = queue.findIndex((x, i) => i !== current && x.status === 'pending');
-        if (anyPending >= 0) setCurrent(anyPending);
-      }
-
-      // Reset fields
-      setScore('4');
-      setQuality('good');
-      setNotes('');
-      setAdditionalComments('');
+      updateItem(item.id, { status: 'saved', exampleId: ex.id });
+      setSavedExamples(s => [...s, ex]);
+      // Auto-advance to next pending
+      const nextIdx = queue.findIndex((x, i) => i > selectedIdx && x.status === 'pending');
+      if (nextIdx >= 0) setSelectedIdx(nextIdx);
     } catch (e) {
       alert('Save error: ' + e.message);
     }
     setSaving(false);
   }
 
-  async function skipCurrent() {
-    setQueue(q => q.map((x, i) => i === current ? { ...x, status: 'skipped' } : x));
-    const nextIdx = queue.findIndex((x, i) => i > current && x.status === 'pending');
-    if (nextIdx >= 0) setCurrent(nextIdx);
-    setScore('4'); setNotes(''); setAdditionalComments('');
+  async function removeSaved(exId) {
+    if (!confirm('Remove this example from the calibration bank?')) return;
+    await deleteExample(assignmentId, exId, password);
+    setSavedExamples(s => s.filter(x => x.id !== exId));
+    setQueue(q => q.map(x => x.exampleId === exId ? { ...x, status: 'pending' } : x));
   }
 
-  function removeFromQueue(idx) {
-    setQueue(q => q.filter((_, i) => i !== idx));
-    if (current >= idx && current > 0) setCurrent(c => c - 1);
-  }
-
-  const item = queue[current];
-  const pending = queue.filter(x => x.status === 'pending').length;
-  const assignment = assignments.find(a => a.id === assignmentId);
+  const item = selectedIdx !== null ? queue[selectedIdx] : null;
 
   return (
     <div>
+      {/* Header */}
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <div className="page-title">Label Historical Data</div>
-          <div className="page-sub">Upload content summary PDFs, set scores, build your calibration bank</div>
+          <div className="page-sub">Score past submissions to build your calibration bank</div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          {saved > 0 && (
-            <span style={{ fontSize: 12, color: 'var(--green)', fontWeight: 500 }}>
-              ✓ {saved} saved
-            </span>
-          )}
           <select value={assignmentId} onChange={e => setAssignmentId(e.target.value)} style={{ fontSize: 13, fontWeight: 500 }}>
             {assignments.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
-        </div>
-      </div>
-
-      <div className="two-col" style={{ alignItems: 'start' }}>
-        {/* Left — upload + queue */}
-        <div>
           <input ref={fileRef} type="file" accept=".pdf" multiple style={{ display: 'none' }}
             onChange={e => handleFiles(e.target.files)} />
+          <button className="primary" onClick={() => fileRef.current.click()} disabled={parsing} style={{ fontSize: 12 }}>
+            {parsing ? 'Reading…' : '+ Upload PDFs'}
+          </button>
+        </div>
+      </div>
 
-          {queue.length === 0 ? (
-            <div className="drop-zone" style={{ marginBottom: 12 }}
-              onClick={() => fileRef.current.click()}
-              onDragOver={e => e.preventDefault()}
-              onDrop={e => { e.preventDefault(); handleFiles(e.dataTransfer.files); }}>
-              <div style={{ fontSize: 28, marginBottom: 8 }}>📂</div>
-              <p>Drop content summary PDFs here</p>
-              <small>Upload as many as you have — they'll queue up one at a time</small>
+      {/* Progress bar */}
+      {queue.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <div style={{ fontSize: 13, fontWeight: 500 }}>
+              {allDone
+                ? <span style={{ color: 'var(--green)', fontWeight: 600 }}>✓ All {done} submissions labeled and saved to calibration bank</span>
+                : <span>{done} of {queue.length} labeled</span>
+              }
             </div>
-          ) : (
-            <button style={{ width: '100%', marginBottom: 10, fontSize: 12 }}
-              onClick={() => fileRef.current.click()} disabled={parsing}>
-              {parsing ? 'Reading PDFs…' : '+ Add more PDFs'}
-            </button>
-          )}
-
-          {parsing && (
-            <div style={{ padding: '10px 12px', background: 'rgba(37,99,235,0.06)', border: '1px solid rgba(37,99,235,0.2)', borderRadius: 8, fontSize: 12, color: 'var(--accent)', marginBottom: 10 }}>
-              Reading PDFs and extracting comments…
+            <div style={{ display: 'flex', gap: 12, fontSize: 12, color: 'var(--text2)' }}>
+              <span style={{ color: 'var(--text3)' }}>{pending} pending</span>
+              <span style={{ color: 'var(--green)' }}>{done} saved</span>
+              <span style={{ color: 'var(--text3)' }}>{queue.filter(x => x.status === 'skipped').length} skipped</span>
             </div>
-          )}
+          </div>
+          <div style={{ height: 6, background: 'var(--bg3)', borderRadius: 3, overflow: 'hidden' }}>
+            <div style={{
+              height: '100%', borderRadius: 3,
+              background: allDone ? 'var(--green)' : 'var(--accent)',
+              width: `${queue.length ? (done / queue.length * 100) : 0}%`,
+              transition: 'width 0.3s'
+            }} />
+          </div>
+        </div>
+      )}
 
-          {/* Queue list */}
-          {queue.map((q, idx) => (
-            <div key={idx}
-              onClick={() => { if (q.status === 'pending') { setCurrent(idx); setScore('4'); setNotes(''); setAdditionalComments(''); } }}
-              className="card card-hover"
-              style={{
-                marginBottom: 4, padding: '8px 12px',
-                borderColor: idx === current ? 'var(--accent)' : q.status === 'saved' ? 'var(--green)' : undefined,
-                borderWidth: idx === current ? 2 : 1,
-                opacity: q.status === 'skipped' ? 0.4 : 1
-              }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: idx === current ? 600 : 400 }}>
-                    {q.studentName}
+      {/* Tabs */}
+      {(queue.length > 0 || savedExamples.length > 0) && (
+        <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+          {[
+            ['queue', `Labeling queue (${queue.length})`],
+            ['saved', `Calibration bank (${savedExamples.length})`]
+          ].map(([k, l]) => (
+            <button key={k} onClick={() => setView(k)} style={{
+              padding: '7px 14px', fontSize: 13,
+              background: view === k ? 'var(--bg3)' : 'var(--bg)',
+              color: view === k ? 'var(--text)' : 'var(--text2)',
+              border: `1px solid ${view === k ? 'var(--border2)' : 'var(--border)'}`,
+              fontWeight: view === k ? 500 : 400
+            }}>{l}</button>
+          ))}
+        </div>
+      )}
+
+      {/* Empty state */}
+      {queue.length === 0 && savedExamples.length === 0 && (
+        <div className="drop-zone"
+          onClick={() => fileRef.current.click()}
+          onDragOver={e => e.preventDefault()}
+          onDrop={e => { e.preventDefault(); handleFiles(e.dataTransfer.files); }}>
+          <div style={{ fontSize: 32, marginBottom: 10 }}>📂</div>
+          <p>Drop content summary PDFs here to start labeling</p>
+          <small>Upload as many as you have — they queue up and you score them one at a time</small>
+        </div>
+      )}
+
+      {/* Queue view */}
+      {view === 'queue' && queue.length > 0 && (
+        <div className="two-col" style={{ alignItems: 'start' }}>
+          {/* Left: queue list */}
+          <div>
+            {queue.map((q, idx) => (
+              <div key={q.id}
+                className="card card-hover"
+                onClick={() => setSelectedIdx(idx)}
+                style={{
+                  marginBottom: 4, padding: '10px 12px',
+                  borderColor: selectedIdx === idx ? 'var(--accent)' : q.status === 'saved' ? 'var(--green)' : undefined,
+                  borderWidth: selectedIdx === idx ? 2 : 1,
+                  opacity: q.status === 'skipped' ? 0.45 : 1
+                }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: selectedIdx === idx ? 600 : 400, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {q.studentName}
+                    </div>
+                    <div style={{ fontSize: 10, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{q.name}</div>
                   </div>
-                  <div style={{ fontSize: 11, color: 'var(--text3)' }}>{q.name}</div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  {q.status === 'saved' && (
-                    <span style={{ fontSize: 11, color: 'var(--green)', fontWeight: 600 }}>✓ {q.savedScore}/6</span>
-                  )}
-                  {q.status === 'skipped' && (
-                    <span style={{ fontSize: 11, color: 'var(--text3)' }}>skipped</span>
-                  )}
-                  {q.status === 'pending' && idx === current && (
-                    <span style={{ fontSize: 11, color: 'var(--accent)' }}>editing</span>
-                  )}
-                  <button className="danger" style={{ fontSize: 10, padding: '1px 6px' }}
-                    onClick={e => { e.stopPropagation(); removeFromQueue(idx); }}>×</button>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0, marginLeft: 8 }}>
+                    {q.status === 'saved' && <span style={{ fontSize: 11, color: 'var(--green)', fontWeight: 600 }}>✓ {q.score}</span>}
+                    {q.status === 'pending' && selectedIdx === idx && <span style={{ fontSize: 11, color: 'var(--accent)' }}>editing</span>}
+                    <button className="danger" style={{ fontSize: 10, padding: '1px 6px' }}
+                      onClick={e => { e.stopPropagation(); removeFromQueue(q.id); }}>×</button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
 
-          {queue.length > 0 && (
-            <div style={{ marginTop: 10, fontSize: 12, color: 'var(--text3)' }}>
-              {pending} pending · {saved} saved · {queue.filter(x => x.status === 'skipped').length} skipped
+          {/* Right: scoring panel */}
+          {item ? (
+            <div>
+              <div className="card" style={{ marginBottom: 10 }}>
+                {/* Student name + file */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
+                  <div>
+                    <input type="text" value={item.studentName}
+                      onChange={e => updateItem(item.id, { studentName: e.target.value })}
+                      style={{ fontSize: 16, fontWeight: 700, border: 'none', padding: 0, background: 'transparent', color: 'var(--text)', outline: 'none', width: '100%' }} />
+                    <div style={{ fontSize: 11, color: 'var(--text3)' }}>{item.name}</div>
+                  </div>
+                  <span style={{ fontSize: 11, color: 'var(--text3)' }}>{selectedIdx + 1} of {queue.length}</span>
+                </div>
+
+                {/* Extracted comments */}
+                {item.extractedComments && (
+                  <div style={{ marginBottom: 14 }}>
+                    <label>Extracted instructor comments</label>
+                    <div style={{
+                      padding: '10px 12px', background: 'var(--bg2)', borderRadius: 6,
+                      fontSize: 12, lineHeight: 1.7, color: 'var(--text)',
+                      maxHeight: 160, overflowY: 'auto', whiteSpace: 'pre-wrap',
+                      border: '1px solid var(--border)'
+                    }}>
+                      {item.extractedComments}
+                    </div>
+                  </div>
+                )}
+
+                {/* Additional context — free window */}
+                <div style={{ marginBottom: 14 }}>
+                  <label>Additional context</label>
+                  <textarea
+                    rows={4}
+                    value={item.additionalContext}
+                    onChange={e => updateItem(item.id, { additionalContext: e.target.value })}
+                    placeholder="Add anything else — what you told the student verbally, general class notes for this period, what you were emphasizing that week, things you noticed that aren't in the PDF comments…"
+                    style={{ fontSize: 13, lineHeight: 1.6 }}
+                  />
+                </div>
+
+                {/* Score */}
+                <div style={{ marginBottom: 14 }}>
+                  <label>Score</label>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {SCORES.map(s => (
+                      <button key={s} onClick={() => updateItem(item.id, { score: String(s) })} style={{
+                        padding: '8px 12px', fontSize: 14, fontWeight: 600, minWidth: 48,
+                        background: item.score === String(s) ? 'var(--accent)' : 'var(--bg2)',
+                        color: item.score === String(s) ? '#fff' : 'var(--text)',
+                        border: `1px solid ${item.score === String(s) ? 'var(--accent)' : 'var(--border2)'}`,
+                      }}>{s}</button>
+                    ))}
+                    <span style={{ fontSize: 12, color: 'var(--text3)', alignSelf: 'center', marginLeft: 4 }}>/ {assignment?.maxScore || 6}</span>
+                  </div>
+                </div>
+
+                {/* Quality */}
+                <div style={{ marginBottom: 14 }}>
+                  <label>Use as</label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {[['good', 'Good example'], ['weak', 'Weak example']].map(([k, l]) => (
+                      <button key={k} onClick={() => updateItem(item.id, { quality: k })} style={{
+                        flex: 1, padding: 8, fontSize: 13,
+                        background: item.quality === k ? (k === 'good' ? 'rgba(22,163,74,0.1)' : 'rgba(220,38,38,0.08)') : 'var(--bg)',
+                        color: item.quality === k ? (k === 'good' ? 'var(--green)' : 'var(--red)') : 'var(--text2)',
+                        border: `1px solid ${item.quality === k ? (k === 'good' ? 'var(--green)' : 'var(--red)') : 'var(--border2)'}`,
+                        fontWeight: item.quality === k ? 600 : 400
+                      }}>{l}</button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Notes */}
+                <div>
+                  <label>Calibration note (optional)</label>
+                  <input type="text" value={item.notes}
+                    onChange={e => updateItem(item.id, { notes: e.target.value })}
+                    placeholder="e.g. Strong BLUF, missing legend, good quantification"
+                    style={{ fontSize: 13 }} />
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="primary" style={{ flex: 1, padding: 12, fontSize: 15, fontWeight: 600 }}
+                  onClick={() => saveItem(item)} disabled={saving || !assignmentId}>
+                  {saving ? 'Saving…' : item.status === 'saved' ? `Update ${item.score}/6` : `Save ${item.score}/6 → Next`}
+                </button>
+                {item.status !== 'saved' && (
+                  <button onClick={() => { updateItem(item.id, { status: 'skipped' }); const next = queue.findIndex((x, i) => i > selectedIdx && x.status === 'pending'); if (next >= 0) setSelectedIdx(next); }}
+                    style={{ fontSize: 13, padding: '12px 16px' }}>Skip</button>
+                )}
+                {item.status === 'saved' && (
+                  <button className="danger" style={{ fontSize: 12 }}
+                    onClick={() => { if (item.exampleId) removeSaved(item.exampleId); }}>
+                    Remove
+                  </button>
+                )}
+              </div>
+              {item.status !== 'saved' && (
+                <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text3)', textAlign: 'center' }}>
+                  Changes save automatically as you type
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>
+              Select a submission from the list to score it.
             </div>
           )}
         </div>
+      )}
 
-        {/* Right — scoring panel */}
-        {item ? (
-          <div>
-            <div className="card" style={{ marginBottom: 12 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: 16 }}>{item.studentName}</div>
-                  <div style={{ fontSize: 12, color: 'var(--text2)' }}>{assignment?.name} · {item.name}</div>
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--text3)' }}>
-                  {current + 1} of {queue.length}
-                </div>
+      {/* Saved examples view */}
+      {view === 'saved' && (
+        <div>
+          {savedExamples.length === 0 ? (
+            <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>
+              No examples saved yet for {assignment?.name || 'this assignment'}.
+            </div>
+          ) : (
+            <>
+              <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 12 }}>
+                {savedExamples.length} example{savedExamples.length !== 1 ? 's' : ''} in calibration bank for {assignment?.name}
               </div>
-
-              {/* Extracted comments */}
-              {item.extractedComments && (
-                <div style={{ marginBottom: 14 }}>
-                  <div className="sec-label">Extracted instructor comments</div>
-                  <div style={{
-                    padding: '10px 12px', background: 'var(--bg2)', borderRadius: 6,
-                    fontSize: 12, lineHeight: 1.7, color: 'var(--text)',
-                    maxHeight: 200, overflowY: 'auto', whiteSpace: 'pre-wrap'
-                  }}>
-                    {item.extractedComments}
-                  </div>
-                </div>
-              )}
-
-              {/* Additional comments */}
-              <div className="field">
-                <label>Additional comments (optional)</label>
-                <textarea
-                  rows={3}
-                  value={additionalComments}
-                  onChange={e => setAdditionalComments(e.target.value)}
-                  placeholder="Any extra notes about this submission beyond what's in the PDF…"
-                  style={{ fontSize: 13 }}
+              {savedExamples.map(ex => (
+                <SavedExampleCard
+                  key={ex.id}
+                  ex={ex}
+                  maxScore={assignment?.maxScore || 6}
+                  password={password}
+                  assignmentId={assignmentId}
+                  onRemove={() => removeSaved(ex.id)}
+                  onUpdate={(updated) => setSavedExamples(s => s.map(x => x.id === updated.id ? updated : x))}
                 />
-              </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
-              {/* Score */}
-              <div style={{ marginBottom: 14 }}>
-                <label>Score</label>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {SCORES.map(s => (
-                    <button
-                      key={s}
-                      onClick={() => setScore(String(s))}
-                      style={{
-                        padding: '8px 14px', fontSize: 14, fontWeight: 600,
-                        background: score === String(s) ? 'var(--accent)' : 'var(--bg3)',
-                        color: score === String(s) ? '#fff' : 'var(--text)',
-                        border: `1px solid ${score === String(s) ? 'var(--accent)' : 'var(--border2)'}`,
-                        minWidth: 52
-                      }}>
-                      {s}
-                    </button>
-                  ))}
-                  <span style={{ fontSize: 12, color: 'var(--text3)', alignSelf: 'center', marginLeft: 4 }}>
-                    / {assignment?.maxScore || 6}
-                  </span>
-                </div>
-              </div>
+function SavedExampleCard({ ex, maxScore, password, assignmentId, onRemove, onUpdate }) {
+  const BASE = import.meta.env.PROD ? '' : 'http://localhost:3001';
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [context, setContext] = useState(ex.content || '');
+  const [notes, setNotes] = useState(ex.notes || '');
+  const [saving, setSaving] = useState(false);
 
-              {/* Quality tier */}
-              <div className="field">
-                <label>Use as</label>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {[['good','Good example'],['weak','Weak example']].map(([k,l]) => (
-                    <button key={k} onClick={() => setQuality(k)} style={{
-                      flex: 1, padding: '7px', fontSize: 13,
-                      background: quality === k ? (k === 'good' ? 'rgba(22,163,74,0.1)' : 'rgba(220,38,38,0.08)') : 'var(--bg)',
-                      color: quality === k ? (k === 'good' ? 'var(--green)' : 'var(--red)') : 'var(--text2)',
-                      border: `1px solid ${quality === k ? (k === 'good' ? 'var(--green)' : 'var(--red)') : 'var(--border2)'}`,
-                      fontWeight: quality === k ? 600 : 400
-                    }}>{l}</button>
-                  ))}
-                </div>
-              </div>
+  async function saveContext() {
+    setSaving(true);
+    try {
+      const r = await fetch(`${BASE}/api/assignments/${assignmentId}/examples/${ex.id}`, {
+        method: 'PUT',
+        headers: { 'x-admin-password': password, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...ex, content: context, notes })
+      });
+      if (r.ok) {
+        const updated = await r.json();
+        onUpdate(updated);
+        setEditing(false);
+      }
+    } catch (e) { alert('Save error: ' + e.message); }
+    setSaving(false);
+  }
 
-              {/* Notes */}
-              <div className="field" style={{ marginBottom: 0 }}>
-                <label>Calibration note (optional)</label>
-                <input type="text" value={notes} onChange={e => setNotes(e.target.value)}
-                  placeholder={`e.g. Strong BLUF, missing legend, good quantification`} />
-              </div>
-            </div>
+  const name = ex.student_name || ex.studentName;
+  const score = ex.score;
+  const quality = ex.quality;
 
-            {/* Action buttons */}
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                className="primary"
-                style={{ flex: 1, padding: 12, fontSize: 15, fontWeight: 600 }}
-                onClick={saveAndNext}
-                disabled={saving || !assignmentId}
-              >
-                {saving ? 'Saving…' : `Save ${score}/6 → Next`}
-              </button>
-              <button onClick={skipCurrent} style={{ fontSize: 13, padding: '12px 16px' }}>
-                Skip
-              </button>
-            </div>
-
-            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text3)', textAlign: 'center' }}>
-              Enter to save and move to the next submission
-            </div>
-          </div>
-        ) : queue.length === 0 ? (
-          <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>
-            <div style={{ fontSize: 32, marginBottom: 12 }}>📋</div>
-            Upload PDFs on the left to start labeling.<br />
-            Each submission takes about 10 seconds to score.
-          </div>
-        ) : (
-          <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--green)', fontSize: 14, fontWeight: 500 }}>
-            <div style={{ fontSize: 32, marginBottom: 12 }}>✓</div>
-            All done! {saved} example{saved !== 1 ? 's' : ''} saved to the calibration bank.
-          </div>
-        )}
+  return (
+    <div className="card" style={{ marginBottom: 6 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', cursor: 'pointer' }}
+          onClick={() => setOpen(o => !o)}>
+          <span style={{ fontWeight: 600, fontSize: 14 }}>{name}</span>
+          <span className={quality === 'weak' ? 'pill-red' : 'pill-green'} style={{ fontSize: 11, padding: '2px 8px' }}>
+            {score}/{maxScore}
+          </span>
+          {quality === 'weak' && <span style={{ fontSize: 11, color: 'var(--text3)' }}>weak example</span>}
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button style={{ fontSize: 11, padding: '3px 8px' }} onClick={() => { setOpen(true); setEditing(true); }}>
+            Edit
+          </button>
+          <button className="danger" style={{ fontSize: 11, padding: '3px 8px' }} onClick={onRemove}>
+            Remove
+          </button>
+        </div>
       </div>
+
+      {ex.notes && !open && (
+        <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 4 }}>{ex.notes}</div>
+      )}
+
+      {open && (
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+          {editing ? (
+            <>
+              <div className="field">
+                <label>Calibration note</label>
+                <input type="text" value={notes} onChange={e => setNotes(e.target.value)} />
+              </div>
+              <div className="field">
+                <label>Content and context</label>
+                <textarea rows={8} value={context} onChange={e => setContext(e.target.value)}
+                  style={{ fontFamily: 'var(--mono)', fontSize: 12, lineHeight: 1.6 }} />
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="primary" onClick={saveContext} disabled={saving} style={{ fontSize: 12 }}>
+                  {saving ? 'Saving…' : 'Save changes'}
+                </button>
+                <button onClick={() => setEditing(false)} style={{ fontSize: 12 }}>Cancel</button>
+              </div>
+            </>
+          ) : (
+            <>
+              {notes && <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 8, fontStyle: 'italic' }}>{notes}</div>}
+              <pre style={{
+                fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text2)',
+                whiteSpace: 'pre-wrap', lineHeight: 1.6, background: 'var(--bg2)',
+                padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)',
+                maxHeight: 200, overflowY: 'auto'
+              }}>{context || 'No content'}</pre>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

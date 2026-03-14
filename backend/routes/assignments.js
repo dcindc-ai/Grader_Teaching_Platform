@@ -106,3 +106,11 @@ Extract everything you can see. For maxScore, add up all the point values in the
     res.status(500).json({ error: e.message });
   }
 });
+
+// PUT update example
+router.put('/:id/examples/:exId', (req, res) => {
+  const b = req.body;
+  db.prepare('UPDATE examples SET student_name=?, score=?, quality=?, notes=?, content=? WHERE id=?')
+    .run(b.student_name || b.studentName, b.score, b.quality, b.notes, b.content, req.params.exId);
+  res.json(db.prepare('SELECT * FROM examples WHERE id=?').get(req.params.exId));
+});
