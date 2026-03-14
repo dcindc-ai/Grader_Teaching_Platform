@@ -1,3 +1,5 @@
+const BASE = import.meta.env.PROD ? '' : 'http://localhost:3001';
+
 import DiscussGrader from './DiscussGrader.jsx';
 import { useState } from 'react';
 import { generateReply, generateSummary } from '../api.js';
@@ -23,6 +25,32 @@ export default function DiscussTab({ course, password, session, onSession, assig
   const [wordsPerSentence, setWordsPerSentence] = useState(18);
   const [structure, setStructure] = useState('organized');
   const [refinement, setRefinement] = useState('');
+  const [students, setStudents] = useState([]);
+  const [selectedStudent, setSelectedStudent] = useState(null);
+  const [studentHistory, setStudentHistory] = useState([]);
+  const [studentSearch, setStudentSearch] = useState('');
+  const [loadingStudents, setLoadingStudents] = useState(false);
+
+  async function loadStudents() {
+    setLoadingStudents(true);
+    try {
+      const r = await fetch(`${BASE}/api/discuss/students?courseId=${course.id}`, {
+        headers: { 'x-admin-password': password }
+      });
+      setStudents(await r.json());
+    } catch (e) {}
+    setLoadingStudents(false);
+  }
+
+  async function loadStudentHistory(name) {
+    try {
+      const r = await fetch(`${BASE}/api/discuss/student?courseId=${course.id}&studentName=${encodeURIComponent(name)}`, {
+        headers: { 'x-admin-password': password }
+      });
+      setStudentHistory(await r.json());
+      setSelectedStudent(name);
+    } catch (e) {}
+  }
 
   async function handleGenerate() {
     if (!name.trim() || !studentAnswer.trim() || !question.trim()) return;
@@ -122,7 +150,7 @@ export default function DiscussTab({ course, password, session, onSession, assig
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
-        {['respond', 'summary', 'grade'].map(t => (
+        {['respond', 'summary', 'grade', 'students'].map(t => (
           <button key={t} onClick={() => setView(t)} style={{
             flex: 1, padding: 10, fontSize: 12,
             background: view === t ? color : 'var(--bg)',
@@ -132,7 +160,8 @@ export default function DiscussTab({ course, password, session, onSession, assig
           }}>
             {t === 'respond' ? 'Respond to Student'
               : t === 'summary' ? `Class Summary${submissions.length > 0 ? ` (${submissions.length})` : ''}`
-              : '🎯 Grade Discussion'}
+              : t === 'grade' ? '🎯 Grade Discussion'
+              : '👥 Students'}
           </button>
         ))}
       </div>
@@ -297,6 +326,79 @@ export default function DiscussTab({ course, password, session, onSession, assig
                 )}
               </>
           }
+        </div>
+      )}
+
+      {/* ── Students ─────────────────────────────────────────────────────── */}
+      {view === 'students' && (
+        <div>
+          {!selectedStudent ? (
+            <>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+                <input type="text" value={studentSearch} onChange={e => setStudentSearch(e.target.value)}
+                  placeholder="Search by name…" style={{ flex: 1, fontSize: 13 }} />
+                <button onClick={loadStudents} disabled={loadingStudents} style={{ fontSize: 12 }}>
+                  {loadingStudents ? 'Loading…' : '↻ Refresh'}
+                </button>
+              </div>
+              {students.length === 0 && !loadingStudents && (
+                <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>
+                  <div style={{ fontSize: 28, marginBottom: 10 }}>👥</div>
+                  No discussion history yet.<br/>Students appear here after you generate responses.
+                  <div style={{ marginTop: 12 }}>
+                    <button onClick={loadStudents} className="primary" style={{ fontSize: 12 }}>Load students</button>
+                  </div>
+                </div>
+              )}
+              {students
+                .filter(s => !studentSearch || s.student_name?.toLowerCase().includes(studentSearch.toLowerCase()))
+                .map((s, i) => (
+                  <div key={i} className="card card-hover" style={{ marginBottom: 6, padding: '10px 14px' }}
+                    onClick={() => loadStudentHistory(s.student_name)}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 14 }}>{s.student_name}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
+                          First seen {new Date(s.first_seen).toLocaleDateString()} · Last {new Date(s.last_seen).toLocaleDateString()}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span className="badge">{s.response_count} discussion{s.response_count !== 1 ? 's' : ''}</span>
+                        <span style={{ fontSize: 12, color: 'var(--accent)' }}>View →</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+            </>
+          ) : (
+            <div>
+              <button className="ghost" style={{ fontSize: 12, marginBottom: 14 }}
+                onClick={() => { setSelectedStudent(null); setStudentHistory([]); }}>
+                ← Back to all students
+              </button>
+              <div style={{ fontWeight: 700, fontSize: 17, marginBottom: 4 }}>{selectedStudent}</div>
+              <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 16 }}>
+                {studentHistory.length} discussion response{studentHistory.length !== 1 ? 's' : ''} on record
+              </div>
+              {studentHistory.map((d, i) => (
+                <div key={i} className="card" style={{ marginBottom: 10 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <div style={{ fontSize: 12, color: 'var(--text2)' }}>
+                      {new Date(d.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 6, fontStyle: 'italic', lineHeight: 1.5, borderLeft: '2px solid var(--border2)', paddingLeft: 8 }}>
+                    Q: {(d.question || '').slice(0, 120)}{(d.question || '').length > 120 ? '…' : ''}
+                  </div>
+                  <div style={{ fontSize: 13, lineHeight: 1.75, color: 'var(--text)', fontStyle: 'italic',
+                    padding: '10px 12px', background: 'rgba(37,99,235,0.04)',
+                    border: '1px solid rgba(37,99,235,0.15)', borderRadius: 6 }}>
+                    {d.instructor_reply}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

@@ -26,7 +26,7 @@ Structure: ${structureDesc}
 Sentence count: exactly ${sentenceCount} sentences
 Max words per sentence: ${wordsPerSentence} words — strictly enforced, break any longer sentence into two
 No colons, semicolons, or em dashes — use periods only
-Use the student's first name once, at the start
+Use ONLY the student's FIRST NAME (e.g. if name is 'Elliot Ambutas' use only 'Elliot'). Use it once, at the very start. Never use full name.
 
 The discussion question was:
 ---
@@ -114,3 +114,36 @@ router.get('/history', (req, res) => {
 });
 
 module.exports = router;
+
+// GET /api/discuss/students — all students with discussion history for a course
+router.get('/students', (req, res) => {
+  const { courseId } = req.query;
+  if (!courseId) return res.status(400).json({ error: 'courseId required' });
+
+  const rows = db.prepare(`
+    SELECT student_name,
+      COUNT(*) as response_count,
+      MAX(created_at) as last_seen,
+      MIN(created_at) as first_seen
+    FROM discussions
+    WHERE course_id=?
+    GROUP BY LOWER(student_name)
+    ORDER BY student_name ASC
+  `).all(courseId);
+
+  res.json(rows);
+});
+
+// GET /api/discuss/student — all entries for one student
+router.get('/student', (req, res) => {
+  const { courseId, studentName } = req.query;
+  if (!courseId || !studentName) return res.status(400).json({ error: 'courseId and studentName required' });
+
+  const rows = db.prepare(`
+    SELECT * FROM discussions
+    WHERE course_id=? AND LOWER(student_name) LIKE LOWER(?)
+    ORDER BY created_at DESC
+  `).all(courseId, `%${studentName.split(' ')[0]}%`);
+
+  res.json(rows);
+});
