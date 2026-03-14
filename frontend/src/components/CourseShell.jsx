@@ -7,6 +7,7 @@ import MaterialsTab from './MaterialsTab.jsx';
 import AlwaysOnTab from './AlwaysOnTab.jsx';
 import CourseSettingsTab from './CourseSettingsTab.jsx';
 import { getAssignments } from '../api.js';
+import LabelTab from './LabelTab.jsx';
 
 const BASE = import.meta.env.PROD ? '' : 'http://localhost:3001';
 
@@ -17,6 +18,7 @@ const TABS = [
   { key: 'discuss', label: 'Discuss' },
   { key: 'students', label: 'Students' },
   { key: 'materials', label: 'Materials' },
+  { key: 'label', label: 'Label Data' },
   { key: 'settings', label: 'Settings' },
 ];
 
@@ -118,6 +120,7 @@ export default function CourseShell({ course, password, onUpdateCourse, onDelete
         {tab === 'discuss' && <DiscussTab course={course} password={password} />}
         {tab === 'students' && <StudentsTab course={course} password={password} />}
         {tab === 'materials' && <MaterialsTab course={course} password={password} />}
+        {tab === 'label' && <LabelTab course={course} password={password} />}
         {tab === 'settings' && (
           <CourseSettingsTab
             course={course}
