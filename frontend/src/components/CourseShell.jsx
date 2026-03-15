@@ -6,6 +6,7 @@ import StudentsTab from './StudentsTab.jsx';
 import MaterialsTab from './MaterialsTab.jsx';
 import AlwaysOnTab from './AlwaysOnTab.jsx';
 import LabelTab from './LabelTab.jsx';
+import AnalyticsTab from './AnalyticsTab.jsx';
 import CourseSettingsTab from './CourseSettingsTab.jsx';
 import { getAssignments } from '../api.js';
 
@@ -18,6 +19,7 @@ const TABS = [
   { key: 'discuss', label: 'Discuss' },
   { key: 'students', label: 'Students' },
   { key: 'materials', label: 'Materials' },
+  { key: 'analytics', label: '📊 Analytics' },
   { key: 'label', label: 'Label Data' },
   { key: 'settings', label: 'Settings' },
 ];
@@ -145,6 +147,9 @@ export default function CourseShell({
         {tab === 'label' && (
           <LabelTab course={course} password={password}
             queue={labelQueue} onQueue={onLabelQueue} />
+        )}
+        {tab === 'analytics' && (
+          <AnalyticsTab course={course} password={password} />
         )}
         {tab === 'settings' && (
           <CourseSettingsTab course={course} password={password}
