@@ -168,9 +168,12 @@ export default function CourseSettingsTab({ course, password, onUpdate, onDelete
             placeholder="e.g. Always use first name only. Never use 'great job'. Always cite specific lines from the student's post. Never use passive voice."
             style={{ fontSize: 12, lineHeight: 1.6 }} />
         </div>
-        </div>
+      </div>
+
+      {/* Legacy voice guidelines */}
+      <div className="card" style={{ marginBottom: 14 }}>
         <div className="field">
-          <label>Voice guidelines</label>
+          <label>Voice guidelines (legacy)</label>
           <textarea rows={3} value={form.voiceGuidelines||''} onChange={e=>upd('voiceGuidelines',e.target.value)} placeholder="e.g. Casual, direct, warm. Not stiff or academic. Sharp mentor tone." style={{ fontSize: 12 }} />
         </div>
         <div className="field">
