@@ -324,10 +324,7 @@ function StudentRecord({ student: initialStudent, course, password, onBack }) {
         body: JSON.stringify({ courseId: course.id })
       });
       const d = await r.json();
-      if (d.insight) setStudent(s => ({ ...s, notes: d.insight + (s.notes ? '
-
----
-' + s.notes : '') }));
+      if (d.insight) setStudent(s => ({ ...s, notes: d.insight + (s.notes ? ['','','---',''].join('\n') + s.notes : '') }));
     } catch (e) { alert(e.message); }
     setGeneratingInsight(false);
   }
