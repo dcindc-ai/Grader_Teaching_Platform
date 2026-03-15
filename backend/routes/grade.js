@@ -370,3 +370,40 @@ router.get('/download', async (req, res) => {
 });
 
 module.exports = router;
+
+// GET /api/grade/canvas-csv — export grades in Canvas gradebook import format
+router.get('/canvas-csv', (req, res) => {
+  const { courseId, assignmentId } = req.query;
+  if (!courseId || !assignmentId) return res.status(400).json({ error: 'courseId and assignmentId required' });
+
+  const assignment = db.prepare('SELECT * FROM assignments WHERE id=?').get(assignmentId);
+  const students = db.prepare('SELECT * FROM students WHERE course_id=?').all(courseId);
+  const grades = db.prepare('SELECT * FROM grades WHERE course_id=? AND assignment_id=?').all(courseId, assignmentId);
+
+  const gradeMap = {};
+  grades.forEach(g => {
+    const key = (g.student_name || '').toLowerCase();
+    gradeMap[key] = g.total;
+  });
+
+  const rows = ['Student,ID,SIS User ID,SIS Login ID,Section,' + (assignment?.name || 'Assignment')];
+
+  if (students.length) {
+    students.forEach(s => {
+      const key = (s.name || '').toLowerCase();
+      const score = gradeMap[key] ?? '';
+      const parts = s.name.split(' ');
+      const last = parts[parts.length - 1];
+      const first = parts.slice(0, -1).join(' ') || s.name;
+      rows.push(`"${last}, ${first}",${s.id},,${s.email || ''},,${score}`);
+    });
+  } else {
+    grades.forEach(g => {
+      rows.push(`"${g.student_name}",,,,, ${g.total}`);
+    });
+  }
+
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', `attachment; filename="canvas_grades_${assignment?.name?.replace(/\s+/g,'_') || 'export'}.csv"`);
+  res.send(rows.join('\n'));
+});

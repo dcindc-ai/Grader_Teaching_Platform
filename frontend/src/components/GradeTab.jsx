@@ -155,6 +155,9 @@ export default function GradeTab({ course, password, activeAssignmentId, queue, 
             {allGrades.length > 0 && (
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 <button style={{ fontSize: 12 }} onClick={() => downloadGrades(course.id, selectedId, password)}>↓ ZIP</button>
+                <button style={{ fontSize: 12 }} onClick={() => {
+                  window.open(`${BASE}/api/grade/canvas-csv?courseId=${course.id}&assignmentId=${selectedId}&password=${encodeURIComponent(password)}`, '_blank');
+                }}>↓ Canvas CSV</button>
                 <button style={{ fontSize: 12, fontWeight: 500, background: 'rgba(37,99,235,0.08)', color: 'var(--accent)', borderColor: 'rgba(37,99,235,0.2)' }}
                   onClick={() => window.open(`${BASE}/api/classreport/${selectedId}/pdf?password=${encodeURIComponent(password)}`, '_blank')}>
                   📋 Class Report

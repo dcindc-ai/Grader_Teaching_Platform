@@ -1,192 +1,220 @@
 import { useState, useEffect, useRef } from 'react';
-import { getStudents, getProgress, uploadRoster, addStudent, deleteStudent } from '../api.js';
+
+const BASE = import.meta.env.PROD ? '' : 'http://localhost:3001';
+function h(pw) { return { 'x-admin-password': pw }; }
 
 export default function StudentsTab({ course, password }) {
   const [students, setStudents] = useState([]);
   const [progress, setProgress] = useState([]);
-  const [view, setView] = useState('roster'); // 'roster' | 'progress'
   const [selected, setSelected] = useState(null);
-  const [adding, setAdding] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [newEmail, setNewEmail] = useState('');
+  const [search, setSearch] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState(null);
   const fileRef = useRef();
 
-  useEffect(() => {
-    getStudents(course.id, password).then(setStudents);
-    getProgress(course.id, password).then(setProgress);
-  }, [course.id]);
+  useEffect(() => { loadStudents(); }, [course.id]);
 
-  async function handleRosterCSV(file) {
+  async function loadStudents() {
+    const [s, p] = await Promise.all([
+      fetch(`${BASE}/api/students?courseId=${course.id}`, { headers: h(password) }).then(r => r.json()),
+      fetch(`${BASE}/api/students/progress/${course.id}`, { headers: h(password) }).then(r => r.json())
+    ]);
+    setStudents(Array.isArray(s) ? s : []);
+    setProgress(Array.isArray(p) ? p : []);
+  }
+
+  async function handleCSV(file) {
     setUploading(true);
     setUploadResult(null);
-    try {
-      const text = await file.text();
-      const lines = text.trim().split('\n');
-      const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/['"]/g, ''));
-      const nameIdx = headers.findIndex(h => h.includes('name'));
-      const emailIdx = headers.findIndex(h => h.includes('email'));
-      if (nameIdx === -1) { alert('CSV must have a Name column.'); setUploading(false); return; }
+    const text = await file.text();
+    const lines = text.trim().split('\n');
+    const header = lines[0].toLowerCase();
+    const nameIdx = header.split(',').findIndex(h => h.includes('name'));
+    const emailIdx = header.split(',').findIndex(h => h.includes('email'));
+    const parsed = lines.slice(1).map(line => {
+      const cols = line.split(',').map(c => c.trim().replace(/^"|"$/g, ''));
+      return { name: cols[nameIdx] || cols[0], email: cols[emailIdx] || cols[1] || '' };
+    }).filter(s => s.name);
 
-      const parsed = lines.slice(1).map(line => {
-        const cols = line.split(',').map(c => c.trim().replace(/^"|"$/g, ''));
-        return { name: cols[nameIdx] || '', email: emailIdx >= 0 ? cols[emailIdx] : '' };
-      }).filter(s => s.name);
-
-      const result = await uploadRoster(course.id, parsed, password);
-      // Reload full student list after upload
-      const updated = await getStudents(course.id, password);
-      setStudents(updated);
-      setUploadResult(result);
-      getProgress(course.id, password).then(setProgress);
-    } catch (e) { alert('Error reading CSV: ' + e.message); }
+    const r = await fetch(`${BASE}/api/students/roster`, {
+      method: 'POST',
+      headers: { ...h(password), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ courseId: course.id, students: parsed })
+    });
+    const result = await r.json();
+    setUploadResult(result);
     setUploading(false);
+    loadStudents();
   }
 
-  async function handleAddSingle() {
-    if (!newName.trim()) return;
-    const s = await addStudent({ courseId: course.id, name: newName.trim(), email: newEmail.trim() }, password);
-    setStudents(st => [...st, s]);
-    setProgress(p => [...p, { ...s, assignmentsGraded: 0, averageScore: null, grades: [] }]);
-    setNewName(''); setNewEmail(''); setAdding(false);
-  }
+  const filtered = progress.filter(s =>
+    !search || s.name?.toLowerCase().includes(search.toLowerCase())
+  );
 
-  async function handleDelete(id) {
-    await deleteStudent(id, password);
-    setStudents(s => s.filter(x => x.id !== id));
-    setProgress(p => p.filter(x => x.id !== id));
-    if (selected?.id === id) setSelected(null);
+  if (selected) {
+    return <StudentDetail
+      student={selected}
+      course={course}
+      password={password}
+      onBack={() => setSelected(null)}
+    />;
   }
-
-  const sel = selected ? progress.find(p => p.id === selected.id) : null;
 
   return (
     <div>
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <div className="page-title">Students</div>
-          <div className="page-sub">{students.length} students enrolled in {course.name}</div>
+          <div className="page-sub">{students.length} enrolled · Click any student to see their grade history</div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <input ref={fileRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={e => e.target.files[0] && handleRosterCSV(e.target.files[0])} />
-          <button style={{ fontSize: 12 }} onClick={() => fileRef.current.click()} disabled={uploading}>
+          <input ref={fileRef} type="file" accept=".csv" style={{ display: 'none' }}
+            onChange={e => e.target.files[0] && handleCSV(e.target.files[0])} />
+          <button onClick={() => fileRef.current.click()} disabled={uploading} style={{ fontSize: 12 }}>
             {uploading ? 'Uploading…' : '↑ Upload roster CSV'}
           </button>
-          <button style={{ fontSize: 12 }} onClick={() => setAdding(a => !a)}>{adding ? 'Cancel' : '+ Add student'}</button>
         </div>
       </div>
 
       {uploadResult && (
-        <div style={{ marginBottom: 12, padding: '8px 12px', background: 'rgba(76,175,114,0.08)', border: '1px solid var(--green)', borderRadius: 8, fontSize: 12, color: 'var(--green)' }}>
-          Added {uploadResult.added} students.{uploadResult.skipped > 0 ? ` ${uploadResult.skipped} skipped (already enrolled).` : ''}{uploadResult.matched > 0 ? ` Matched ${uploadResult.matched} existing grade${uploadResult.matched !== 1 ? 's' : ''} to roster.` : ''}
+        <div style={{ padding: '8px 12px', marginBottom: 12, background: 'rgba(22,163,74,0.08)', border: '1px solid rgba(22,163,74,0.2)', borderRadius: 8, fontSize: 13, color: 'var(--green)' }}>
+          ✓ Added {uploadResult.added} students.
+          {uploadResult.skipped > 0 && ` ${uploadResult.skipped} skipped (already enrolled).`}
+          {uploadResult.matched > 0 && ` Matched ${uploadResult.matched} existing grades.`}
         </div>
       )}
 
-      {adding && (
-        <div className="card" style={{ marginBottom: 12, display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-          <div className="field" style={{ flex: 1, margin: 0 }}>
-            <label>Name</label>
-            <input type="text" value={newName} onChange={e => setNewName(e.target.value)} placeholder="Full name" onKeyDown={e => e.key === 'Enter' && handleAddSingle()} />
-          </div>
-          <div className="field" style={{ flex: 1, margin: 0 }}>
-            <label>Email (optional)</label>
-            <input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="student@university.edu" />
-          </div>
-          <button className="primary" onClick={handleAddSingle} style={{ height: 36, flexShrink: 0 }}>Add</button>
+      <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+        placeholder="Search students…" style={{ marginBottom: 12, fontSize: 13 }} />
+
+      {filtered.length === 0 ? (
+        <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>
+          <div style={{ fontSize: 28, marginBottom: 10 }}>👥</div>
+          No students yet. Upload a roster CSV to get started.
         </div>
-      )}
-
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
-        {[['roster','Roster'],['progress','Progress']].map(([k,l]) => (
-          <button key={k} onClick={() => setView(k)} style={{ padding: '7px 16px', fontSize: 13, background: view===k?'var(--bg4)':'var(--bg3)', color: view===k?'var(--text)':'var(--text2)', border: `1px solid ${view===k?'var(--border2)':'var(--border)'}`, fontWeight: view===k?500:400 }}>{l}</button>
-        ))}
-      </div>
-
-      {view === 'roster' && (
+      ) : (
         <div>
-          {students.length === 0 && (
-            <div style={{ padding: 32, textAlign: 'center', color: 'var(--text3)', fontSize: 13, border: '1px dashed var(--border2)', borderRadius: 8 }}>
-              No students enrolled yet. Upload a roster CSV or add students individually.
+          {/* Summary stats */}
+          {progress.length > 0 && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 16 }}>
+              {[
+                ['Enrolled', students.length],
+                ['Graded at least once', progress.filter(s => s.assignmentsGraded > 0).length],
+                ['Avg assignments graded', progress.length ? (progress.reduce((a,s) => a + s.assignmentsGraded, 0) / progress.length).toFixed(1) : 0],
+                ['Class avg score', (() => {
+                  const all = progress.flatMap(s => s.grades || []);
+                  if (!all.length) return '—';
+                  return (all.reduce((a, g) => a + (parseFloat(g.total)||0) / (parseFloat(g.maxScore)||1), 0) / all.length * 100).toFixed(0) + '%';
+                })()]
+              ].map(([l, v]) => (
+                <div key={l} style={{ padding: '10px 12px', background: '#fff', border: '1px solid var(--border)', borderRadius: 8, textAlign: 'center' }}>
+                  <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>{l}</div>
+                  <div style={{ fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 18 }}>{v}</div>
+                </div>
+              ))}
             </div>
           )}
-          {students.map(s => {
-            const prog = progress.find(p => p.id === s.id);
+
+          {filtered.map(s => {
+            const avg = s.averageScore ? parseFloat(s.averageScore) : null;
+            const grades = s.grades || [];
             return (
-              <div key={s.id} className="card card-hover" style={{ marginBottom: 5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
-                onClick={() => { setSelected(s); setView('progress'); }}>
-                <div>
-                  <div style={{ fontWeight: 500 }}>{s.name}</div>
-                  {s.email && <div style={{ fontSize: 11, color: 'var(--text3)' }}>{s.email}</div>}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  {prog?.averageScore && (
-                    <span style={{ fontFamily: 'var(--mono)', fontSize: 14, fontWeight: 500 }}>{prog.averageScore} avg</span>
-                  )}
-                  <span style={{ fontSize: 11, color: 'var(--text3)' }}>{prog?.assignmentsGraded || 0} graded</span>
-                  <button className="danger" style={{ fontSize: 11, padding: '2px 8px' }} onClick={e => { e.stopPropagation(); handleDelete(s.id); }}>Remove</button>
+              <div key={s.id} className="card card-hover" style={{ marginBottom: 6, padding: '12px 14px' }}
+                onClick={() => setSelected(s)}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{s.name}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
+                      {s.email || 'No email'} · {s.assignmentsGraded} assignment{s.assignmentsGraded !== 1 ? 's' : ''} graded
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                    {/* Mini grade history dots */}
+                    <div style={{ display: 'flex', gap: 3 }}>
+                      {grades.slice(0, 6).map((g, i) => {
+                        const pct = parseFloat(g.total) / parseFloat(g.maxScore);
+                        const color = pct >= 0.85 ? 'var(--green)' : pct >= 0.7 ? 'var(--amber)' : 'var(--red)';
+                        return <div key={i} title={`${g.assignmentName}: ${g.total}/${g.maxScore}`}
+                          style={{ width: 10, height: 10, borderRadius: '50%', background: color }} />;
+                      })}
+                    </div>
+                    {avg !== null ? (
+                      <span style={{ fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 16,
+                        color: avg/6 >= 0.85 ? 'var(--green)' : avg/6 >= 0.7 ? 'var(--amber)' : 'var(--red)' }}>
+                        {avg}
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: 12, color: 'var(--text3)' }}>No grades</span>
+                    )}
+                    <span style={{ fontSize: 12, color: 'var(--accent)' }}>View →</span>
+                  </div>
                 </div>
               </div>
             );
           })}
         </div>
       )}
+    </div>
+  );
+}
 
-      {view === 'progress' && (
-        <div className="two-col" style={{ alignItems: 'start' }}>
-          {/* Student list */}
-          <div>
-            {progress.map(p => (
-              <div key={p.id} className="card card-hover" style={{ marginBottom: 5, borderColor: selected?.id === p.id ? course.color : undefined }}
-                onClick={() => setSelected(p)}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontWeight: selected?.id === p.id ? 500 : 400 }}>{p.name}</span>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    {p.averageScore && <span style={{ fontFamily: 'var(--mono)', fontSize: 14, fontWeight: 500 }}>{p.averageScore}</span>}
-                    <span className="badge">{p.assignmentsGraded}</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+function StudentDetail({ student, course, password, onBack }) {
+  const grades = student.grades || [];
+  const avg = grades.length
+    ? (grades.reduce((a, g) => a + parseFloat(g.total||0) / parseFloat(g.maxScore||1), 0) / grades.length * 100).toFixed(0)
+    : null;
 
-          {/* Student detail */}
-          {sel ? (
-            <div>
-              <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 }}>{sel.name}</div>
-              {sel.email && <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 12 }}>{sel.email}</div>}
+  return (
+    <div>
+      <button className="ghost" style={{ fontSize: 12, marginBottom: 14 }} onClick={onBack}>
+        ← All students
+      </button>
 
-              <div className="three-col" style={{ marginBottom: 16 }}>
-                {[['Assignments graded', sel.assignmentsGraded], ['Average score', sel.averageScore || '—'], ['Enrolled', new Date(sel.createdAt).toLocaleDateString()]].map(([l,v]) => (
-                  <div key={l} style={{ padding: '8px 10px', background: 'var(--bg3)', borderRadius: 6 }}>
-                    <div className="sec-label" style={{ margin: 0, marginBottom: 2 }}>{l}</div>
-                    <div style={{ fontFamily: 'var(--mono)', fontWeight: 500 }}>{v}</div>
-                  </div>
-                ))}
-              </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+        <div>
+          <div style={{ fontSize: 20, fontWeight: 700 }}>{student.name}</div>
+          <div style={{ fontSize: 13, color: 'var(--text2)', marginTop: 2 }}>{student.email}</div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          {avg && <div style={{ fontFamily: 'var(--mono)', fontSize: 28, fontWeight: 700,
+            color: parseInt(avg) >= 85 ? 'var(--green)' : parseInt(avg) >= 70 ? 'var(--amber)' : 'var(--red)' }}>
+            {avg}%
+          </div>}
+          <div style={{ fontSize: 12, color: 'var(--text2)' }}>{grades.length} assignment{grades.length !== 1 ? 's' : ''} graded</div>
+        </div>
+      </div>
 
-              {sel.grades?.length > 0 && (
-                <>
-                  <div className="sec-label">Grade history</div>
-                  {sel.grades.map(g => (
-                    <div key={g.id} className="card" style={{ marginBottom: 5 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div>
-                          <div style={{ fontWeight: 500, fontSize: 13 }}>{g.assignmentName}</div>
-                          <div style={{ fontSize: 11, color: 'var(--text3)' }}>{new Date(g.gradedAt).toLocaleDateString()}</div>
-                        </div>
-                        <span style={{ fontFamily: 'var(--mono)', fontWeight: 600 }}>{g.total}/{g.maxScore}</span>
-                      </div>
-                      {g.key_improvement && <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 4 }}>→ {g.key_improvement}</div>}
+      {grades.length === 0 ? (
+        <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>
+          No grades recorded yet for {student.name.split(' ')[0]}.
+        </div>
+      ) : (
+        <div>
+          {grades.map((g, i) => {
+            const pct = parseFloat(g.total) / parseFloat(g.maxScore);
+            const color = pct >= 0.85 ? 'var(--green)' : pct >= 0.7 ? 'var(--amber)' : 'var(--red)';
+            return (
+              <div key={i} className="card" style={{ marginBottom: 8, padding: '12px 14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{g.assignmentName}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text3)' }}>
+                      {new Date(g.gradedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                     </div>
-                  ))}
-                </>
-              )}
-            </div>
-          ) : (
-            <div style={{ fontSize: 13, color: 'var(--text3)', padding: '20px 0' }}>Select a student to see their progress.</div>
-          )}
+                  </div>
+                  <span style={{ fontFamily: 'var(--mono)', fontSize: 22, fontWeight: 700, color }}>
+                    {g.total}<span style={{ fontSize: 13, fontWeight: 400, color: 'var(--text2)' }}>/{g.maxScore}</span>
+                  </span>
+                </div>
+                {g.key_improvement && (
+                  <div style={{ fontSize: 12, color: 'var(--text2)', padding: '5px 8px',
+                    background: 'var(--bg2)', borderRadius: 5, borderLeft: '3px solid var(--amber)' }}>
+                    → {g.key_improvement}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

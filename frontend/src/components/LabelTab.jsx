@@ -7,8 +7,28 @@ const SCORES = [3, 3.5, 4, 4.5, 5, 5.5, 6];
 export default function LabelTab({ course, password, queue: externalQueue, onQueue: onExternalQueue }) {
   const [assignments, setAssignments] = useState([]);
   const [assignmentId, setAssignmentId] = useState('');
-  // Use external (lifted) queue if provided, otherwise local
-  const [localQueue, setLocalQueue] = useState([]);
+  // Use external (lifted) queue if provided, otherwise local with localStorage persistence
+  const storageKey = `label_queue_${course.id}`;
+  const [localQueue, setLocalQueueRaw] = useState(() => {
+    try {
+      // Restore metadata but not file objects (can't serialize File objects)
+      const saved = JSON.parse(localStorage.getItem(storageKey) || '[]');
+      // Mark file-backed items as needing re-upload
+      return saved.map(q => q.file ? { ...q, file: null, status: q.status === 'pending' ? 'needs-reupload' : q.status } : q);
+    } catch (e) { return []; }
+  });
+
+  function setLocalQueue(updater) {
+    setLocalQueueRaw(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      try {
+        // Save without file objects
+        localStorage.setItem(storageKey, JSON.stringify(next.map(q => ({ ...q, file: undefined }))));
+      } catch (e) {}
+      return next;
+    });
+  }
+
   const queue = externalQueue || localQueue;
   const setQueue = onExternalQueue || setLocalQueue;
   const [selectedIdx, setSelectedIdx] = useState(null);
