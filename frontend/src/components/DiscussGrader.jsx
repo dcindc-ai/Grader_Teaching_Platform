@@ -206,6 +206,12 @@ export default function DiscussGrader({ course, password, assignments }) {
   const hasRubric = rubricCriteria.length > 0;
   const hasResult = result !== null;
 
+  const isCompletion = course.gradingModel === 'completion';
+
+  if (isCompletion) {
+    return <CompletionGrader course={course} password={password} assignments={assignments} />;
+  }
+
   return (
     <div style={{ maxWidth: 860 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
@@ -642,6 +648,110 @@ function HistoryDetail({ grade, rubricCriteria }) {
         <div style={{ marginTop: 10, padding: '12px 16px', background: 'rgba(37,99,235,0.04)', border: '1px solid rgba(37,99,235,0.2)', borderRadius: 8 }}>
           <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--accent)', marginBottom: 6 }}>Instructor Feedback</div>
           <p style={{ fontSize: 13, lineHeight: 1.75, fontStyle: 'italic', margin: 0 }}>{grade.instructor_paragraph}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// ── Completion / Pass-Fail Grader (UMD style) ──────────────────────────────
+
+function CompletionGrader({ course, password, assignments }) {
+  const BASE = import.meta.env.PROD ? '' : 'http://localhost:3001';
+  const [selectedAssignment, setSelectedAssignment] = useState(assignments?.[0] || null);
+  const [studentName, setStudentName] = useState('');
+  const [submission, setSubmission] = useState('');
+  const [comment, setComment] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [history, setHistory] = useState([]);
+
+  const maxPts = selectedAssignment?.maxScore || 10;
+
+  async function markComplete() {
+    setSaving(true);
+    try {
+      const r = await fetch(`${BASE}/api/discussgrade/grade`, {
+        method: 'POST',
+        headers: { 'x-admin-password': password, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          courseId: course.id,
+          assignmentId: selectedAssignment?.id,
+          studentName,
+          discussionQuestion: '',
+          submission,
+          rubricCriteria: [{ id: 'completion', name: 'Completion', maxPoints: maxPts, ratings: [
+            { name: 'Complete', points: maxPts, description: 'Post submitted' },
+            { name: 'Incomplete', points: 0, description: 'No post submitted' }
+          ]}],
+          instructorBio: course.instructorBio
+        })
+      });
+      setHistory(h => [{ studentName, comment, pts: maxPts, date: new Date() }, ...h]);
+      setSaved(true);
+      setStudentName('');
+      setSubmission('');
+      setComment('');
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) { alert(e.message); }
+    setSaving(false);
+  }
+
+  return (
+    <div style={{ maxWidth: 680 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <div>
+          <div style={{ fontSize: 19, fontWeight: 700 }}>Grade Discussion</div>
+          <div style={{ fontSize: 13, color: 'var(--text2)' }}>Completion grading · {maxPts} pts for participating</div>
+        </div>
+        <select value={selectedAssignment?.id || ''} style={{ fontSize: 13 }}
+          onChange={e => setSelectedAssignment(assignments?.find(a => a.id === e.target.value))}>
+          {assignments?.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+        </select>
+      </div>
+
+      <div className="card" style={{ marginBottom: 12 }}>
+        <div className="field">
+          <label>Student name</label>
+          <input type="text" value={studentName} onChange={e => setStudentName(e.target.value)} placeholder="First and last name" />
+        </div>
+        <div className="field">
+          <label>Student post (optional — paste to keep a record)</label>
+          <textarea rows={6} value={submission} onChange={e => setSubmission(e.target.value)}
+            placeholder="Paste student's post here to keep it on record…"
+            style={{ fontSize: 13, lineHeight: 1.6 }} />
+        </div>
+        <div className="field" style={{ marginBottom: 0 }}>
+          <label>Comment to student (optional)</label>
+          <textarea rows={2} value={comment} onChange={e => setComment(e.target.value)}
+            placeholder="Any feedback you want to leave…" style={{ fontSize: 13 }} />
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button className="primary" style={{ flex: 1, padding: 12, fontSize: 14, fontWeight: 600 }}
+          onClick={markComplete} disabled={saving || !studentName.trim()}>
+          {saving ? 'Saving…' : saved ? `✓ Marked complete — ${maxPts}/${maxPts} pts` : `Mark complete — ${maxPts}/${maxPts} pts`}
+        </button>
+        <button style={{ fontSize: 13, padding: '12px 16px' }}
+          onClick={() => { setStudentName(''); setSubmission(''); setComment(''); }}>
+          Clear
+        </button>
+      </div>
+
+      {history.length > 0 && (
+        <div style={{ marginTop: 20 }}>
+          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 10 }}>
+            Marked complete this session ({history.length})
+          </div>
+          {history.map((h, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 12px',
+              background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 6, marginBottom: 4, fontSize: 13 }}>
+              <span style={{ fontWeight: 500 }}>{h.studentName}</span>
+              <span style={{ color: 'var(--green)', fontWeight: 600 }}>{h.pts}/{maxPts} pts</span>
+            </div>
+          ))}
         </div>
       )}
     </div>

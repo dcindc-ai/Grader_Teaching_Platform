@@ -72,6 +72,34 @@ export default function CourseSettingsTab({ course, password, onUpdate, onDelete
         </div>
       </div>
 
+      {/* Grading model */}
+      <div className="card" style={{ marginBottom: 14 }}>
+        <div style={{ fontWeight: 500, marginBottom: 6 }}>Discussion Grading Model</div>
+        <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 12 }}>
+          Controls how discussions are graded. Set once per course — applies to all discussions.
+        </div>
+        <div style={{ display: 'flex', gap: 10 }}>
+          {[
+            { value: 'rubric', label: 'Rubric-based', desc: 'Each criterion scored separately. Total adds up to a grade. Use for WFU AIN 714.' },
+            { value: 'completion', label: 'Completion / pass-fail', desc: 'Students get full points for participating. No rubric. Use for UMD GEOG 661.' }
+          ].map(opt => (
+            <div key={opt.value}
+              onClick={() => upd('gradingModel', opt.value)}
+              style={{
+                flex: 1, padding: '12px 14px', borderRadius: 8, cursor: 'pointer',
+                border: `2px solid ${form.gradingModel === opt.value ? course.color : 'var(--border)'}`,
+                background: form.gradingModel === opt.value ? `${course.color}10` : 'var(--bg)'
+              }}>
+              <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4,
+                color: form.gradingModel === opt.value ? course.color : 'var(--text)' }}>
+                {form.gradingModel === opt.value ? '● ' : '○ '}{opt.label}
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.5 }}>{opt.desc}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* Instructor voice */}
       <div className="card" style={{ marginBottom: 14 }}>
         <div style={{ fontWeight: 500, marginBottom: 12 }}>Instructor Voice</div>

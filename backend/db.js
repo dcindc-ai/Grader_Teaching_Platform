@@ -184,7 +184,7 @@ if (courseCount.n === 0) {
 
 function parseCourse(r) {
   if (!r) return null;
-  return { id:r.id, name:r.name, fullName:r.full_name, institution:r.institution, term:r.term,
+  return { id:r.id, name:r.name, fullName:r.full_name, institution:r.institution, gradingModel:r.grading_model || 'rubric', term:r.term,
     color:r.color, colorDark:r.color_dark, colorFaint:r.color_faint,
     instructorBio:r.instructor_bio, voiceGuidelines:r.voice_guidelines,
     discussionDefaultQuestion:r.discussion_default_question,
