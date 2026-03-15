@@ -4,11 +4,12 @@ AI-assisted teaching platform for multi-course instruction. Built for Dave Cook 
 
 ## Features
 
-- **Multi-course management** — GEOG 661, AIN 714, and any future course
-- **PDF Assignment Grading** — bulk upload, AI grading, calibration examples, rewrite suggestions
+- **Multi-course management** — GEOINT, GEOAI and AI Strategy and Innovation, and any future course
+- **PDF Assignment Grading** — bulk upload, AI grading, calibration examples from past classes, rewrite suggestions
 - **Discussion Responder** — generate personalized instructor replies in your voice
 - **Student Roster** — track progress across all assignments per student
 - **Teaching Corpus** — queryable history of all graded work across all courses
+- **Always On Learning** — a new feature that calibrates a student's performance during the course and makes recommendations and suggestions to enhance their learning
 
 ## Stack
 
