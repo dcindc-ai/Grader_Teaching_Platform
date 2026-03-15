@@ -93,20 +93,15 @@ export default function MaterialsTab({ course, password }) {
           const mat = await r.json();
           setUploadProgress(p => p ? { ...p, step: steps.length, done: true } : null);
           setMaterials(m => [mat, ...m.filter(x => x.id !== mat.id)]);
-          await new Promise(r => setTimeout(r, 600)); // brief done flash
         } else {
           const err = await r.json();
           setUploadProgress(p => p ? { ...p, error: err.error || 'Upload failed' } : null);
-          await new Promise(r => setTimeout(r, 2000));
         }
       } catch (e) {
         setUploadProgress(p => p ? { ...p, error: e.message } : null);
-        await new Promise(r => setTimeout(r, 2000));
       }
     }
 
-    setUploadProgress(null);
-    setUploadForm({ name: '', weekNumber: '', assignmentId: '', materialType: 'lecture' });
     setUploading(false);
   }
 
@@ -161,14 +156,24 @@ export default function MaterialsTab({ course, password }) {
       {uploadProgress && (
         <div className="card" style={{ marginBottom: 14, borderColor: uploadProgress.error ? 'var(--red)' : uploadProgress.done ? 'var(--green)' : 'var(--accent)', borderWidth: 2 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <div style={{ fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 340 }}>
+            <div style={{ fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 300 }}>
               {uploadProgress.file}
             </div>
-            {uploadProgress.total > 1 && (
-              <span style={{ fontSize: 12, color: 'var(--text3)', flexShrink: 0 }}>
-                {uploadProgress.current} of {uploadProgress.total}
-              </span>
-            )}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+              {uploadProgress.total > 1 && (
+                <span style={{ fontSize: 12, color: 'var(--text3)' }}>
+                  {uploadProgress.current} of {uploadProgress.total}
+                </span>
+              )}
+              {(uploadProgress.done || uploadProgress.error) && !uploading && (
+                <button onClick={() => {
+                  setUploadProgress(null);
+                  setUploadForm({ name: '', weekNumber: '', assignmentId: '', materialType: 'lecture' });
+                }} style={{ fontSize: 11, padding: '2px 10px' }}>
+                  Dismiss
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Step indicators */}

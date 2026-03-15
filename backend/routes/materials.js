@@ -96,12 +96,13 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 
   db.prepare(`
     INSERT INTO materials (id,course_id,name,type,week_number,assignment_id,file_path,extracted_text,file_size,version,material_type)
-    VALUES (?,?,?,?,?,?,?,?,?,?)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?)
   `).run(
     id, courseId, name || file.originalname, type,
     weekNumber ? parseInt(weekNumber) : null,
     assignmentId || null,
-    file.path, extractedText, file.size, version + 1
+    file.path, extractedText, file.size, version + 1,
+    materialType || 'lecture'
   );
 
   res.json(parseMaterial(db.prepare('SELECT * FROM materials WHERE id=?').get(id)));
