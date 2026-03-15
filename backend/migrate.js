@@ -22,6 +22,14 @@ function migrate(db) {
     // Materials
     "ALTER TABLE materials ADD COLUMN material_type TEXT DEFAULT 'lecture'",
 
+    // Student record expansion
+    "ALTER TABLE students ADD COLUMN first_name TEXT",
+    "ALTER TABLE students ADD COLUMN last_name TEXT",
+    "ALTER TABLE students ADD COLUMN preferred_name TEXT",
+    "ALTER TABLE students ADD COLUMN nickname TEXT",
+    "ALTER TABLE students ADD COLUMN notes TEXT",
+    "ALTER TABLE students ADD COLUMN photo_url TEXT",
+
     // Always-On
     "ALTER TABLE always_on ADD COLUMN review_notes TEXT",
   ];
