@@ -6,6 +6,67 @@ const { v4: uuidv4 } = require('uuid');
 const { db, parseGrade, firstName } = require('../db');
 
 const router = express.Router();
+
+// Parse student name from Canvas filename format:
+// "Lastname_Firstname_assignmentname_12345_submission.pdf"
+// or "Lastname_lab1.pdf" or "Lastname_Firstname_lab1.pdf"
+function parseNameFromFilename(filename) {
+  const base = filename.replace(/\.[^.]+$/, '').replace(/_submission$/, '');
+  const parts = base.split('_').filter(Boolean);
+  if (!parts.length) return null;
+
+  // Canvas format: first part is last name, second is first name (if it looks like a name)
+  const lastName = parts[0];
+  const secondPart = parts[1] || '';
+  
+  // If second part looks like a name (not a number, not "lab", "assignment", etc.)
+  const looksLikeName = secondPart && 
+    !/^\d+$/.test(secondPart) && 
+    !/^(lab|assignment|hw|quiz|discussion|submission|attempt)/i.test(secondPart) &&
+    secondPart.length > 1;
+
+  if (looksLikeName) {
+    return { firstName: secondPart, lastName, fullName: `${secondPart} ${lastName}` };
+  }
+  // Just last name
+  return { firstName: '', lastName, fullName: lastName };
+}
+
+// Try to match a student record from name or filename
+function matchStudentRecord(db, courseId, studentName, filename) {
+  const students = db.prepare('SELECT * FROM students WHERE course_id=?').all(courseId);
+  if (!students.length) return null;
+
+  // Try exact name match first
+  if (studentName && studentName !== 'Unknown') {
+    const exact = students.find(s => 
+      (s.name || '').toLowerCase() === studentName.toLowerCase()
+    );
+    if (exact) return exact;
+    
+    // Try last name match
+    const nameParts = studentName.toLowerCase().split(' ');
+    const lastName = nameParts[nameParts.length - 1];
+    const byLast = students.find(s => 
+      (s.last_name || '').toLowerCase() === lastName ||
+      (s.name || '').toLowerCase().endsWith(' ' + lastName)
+    );
+    if (byLast) return byLast;
+  }
+
+  // Try filename parsing
+  const parsed = parseNameFromFilename(filename || '');
+  if (parsed?.lastName) {
+    const byFileLast = students.find(s =>
+      (s.last_name || '').toLowerCase() === parsed.lastName.toLowerCase() ||
+      (s.name || '').toLowerCase().endsWith(' ' + parsed.lastName.toLowerCase())
+    );
+    if (byFileLast) return byFileLast;
+  }
+
+  return null;
+}
+
 const upload = multer({ dest: './uploads/', limits: { fileSize: 25 * 1024 * 1024 } });
 
 const DIMS = ['clarity','logic','structure','tone','style'];
@@ -292,6 +353,24 @@ router.post('/batch', upload.array('files', 50), async (req, res) => {
           JSON.stringify(alwaysOn.links || [])
         );
       }
+
+      // Try to match to student roster and get proper name
+      const parsedFromFile = parseNameFromFilename(originalName);
+      const studentMatch = matchStudentRecord(db, courseId, gradeResult.studentName, originalName);
+      
+      let finalStudentName = gradeResult.studentName || 'Unknown';
+      if (studentMatch) {
+        finalStudentName = studentMatch.name || finalStudentName;
+        db.prepare('UPDATE grades SET student_name=?, student_id=? WHERE id=?')
+          .run(finalStudentName, studentMatch.id, gradeId);
+      } else if (parsedFromFile?.fullName && finalStudentName === 'Unknown') {
+        finalStudentName = parsedFromFile.fullName;
+        db.prepare('UPDATE grades SET student_name=? WHERE id=?')
+          .run(finalStudentName, gradeId);
+      }
+
+      // Small delay between files to avoid API rate limits
+      if (i < files.length - 1) await new Promise(r => setTimeout(r, 500));
 
       const grade = parseGrade(db.prepare('SELECT * FROM grades WHERE id=?').get(gradeId));
       res.write(`data: ${JSON.stringify({ type:'result', file:originalName, index:i, total:files.length, grade, hasAlwaysOn:!!alwaysOn, status:'done' })}\n\n`);
