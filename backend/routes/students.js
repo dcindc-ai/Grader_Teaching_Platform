@@ -32,6 +32,7 @@ router.get('/', (req, res) => {
 
 
 router.post('/roster', (req, res) => {
+  console.log('ROSTER endpoint hit, courseId:', req.body?.courseId, 'students:', req.body?.students?.length);
   const { courseId, students } = req.body;
   if (!courseId || !Array.isArray(students)) {
     return res.status(400).json({ error: 'courseId and students array required' });
