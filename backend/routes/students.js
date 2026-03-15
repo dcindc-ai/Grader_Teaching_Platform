@@ -227,8 +227,6 @@ router.delete('/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-module.exports = router;
-
 // POST /api/students/:id/insight — generate AI insight paragraph
 router.post('/:id/insight', async (req, res) => {
   const { courseId } = req.body;
@@ -282,3 +280,5 @@ Write in first person as the instructor. Be frank.`
     res.status(500).json({ error: e.message });
   }
 });
+
+module.exports = router;
