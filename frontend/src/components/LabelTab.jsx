@@ -304,16 +304,33 @@ export default function LabelTab({ course, password, queue: externalQueue, onQue
                 {/* Score */}
                 <div style={{ marginBottom: 14 }}>
                   <label>Score</label>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
                     {SCORES.map(s => (
                       <button key={s} onClick={() => updateItem(item.id, { score: String(s) })} style={{
-                        padding: '8px 12px', fontSize: 14, fontWeight: 600, minWidth: 48,
+                        padding: '6px 10px', fontSize: 13, fontWeight: 600, minWidth: 42,
                         background: item.score === String(s) ? 'var(--accent)' : 'var(--bg2)',
                         color: item.score === String(s) ? '#fff' : 'var(--text)',
                         border: `1px solid ${item.score === String(s) ? 'var(--accent)' : 'var(--border2)'}`,
                       }}>{s}</button>
                     ))}
-                    <span style={{ fontSize: 12, color: 'var(--text3)', alignSelf: 'center', marginLeft: 4 }}>/ {assignment?.maxScore || 6}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ fontSize: 11, color: 'var(--text3)' }}>Or type exact score:</div>
+                    <input
+                      type="number"
+                      value={item.score}
+                      min="0"
+                      max={assignment?.maxScore || 6}
+                      step="0.1"
+                      onChange={e => updateItem(item.id, { score: e.target.value })}
+                      style={{ width: 80, fontSize: 16, fontWeight: 700, fontFamily: 'var(--mono)', textAlign: 'center', padding: '4px 8px' }}
+                    />
+                    <span style={{ fontSize: 13, color: 'var(--text3)' }}>/ {assignment?.maxScore || 6}</span>
+                    <span style={{ fontSize: 12, color: 'var(--text2)', marginLeft: 4 }}>
+                      {item.score && assignment?.maxScore
+                        ? `(${Math.round(parseFloat(item.score) / parseFloat(assignment.maxScore) * 100)}%)`
+                        : ''}
+                    </span>
                   </div>
                 </div>
 
@@ -347,7 +364,7 @@ export default function LabelTab({ course, password, queue: externalQueue, onQue
               <div style={{ display: 'flex', gap: 8 }}>
                 <button className="primary" style={{ flex: 1, padding: 12, fontSize: 15, fontWeight: 600 }}
                   onClick={() => saveItem(item)} disabled={saving || !assignmentId}>
-                  {saving ? 'Saving…' : item.status === 'saved' ? `Update ${item.score}/6` : `Save ${item.score}/6 → Next`}
+                  {saving ? 'Saving…' : item.status === 'saved' ? `Update ${item.score}/${assignment?.maxScore || 6}` : `Save ${item.score}/${assignment?.maxScore || 6} → Next`}
                 </button>
                 {item.status !== 'saved' && (
                   <button onClick={() => { updateItem(item.id, { status: 'skipped' }); const next = queue.findIndex((x, i) => i > selectedIdx && x.status === 'pending'); if (next >= 0) setSelectedIdx(next); }}

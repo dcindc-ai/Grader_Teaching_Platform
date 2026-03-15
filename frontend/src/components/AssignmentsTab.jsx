@@ -216,8 +216,19 @@ export default function AssignmentsTab({ course, password }) {
                 <div className="field" style={{margin:0}}><label>Student name</label>
                   <input type="text" value={exForm.studentName} onChange={e=>setExForm(f=>({...f,studentName:e.target.value}))} placeholder="Last name" /></div>
                 <div className="field" style={{margin:0}}><label>Score</label>
-                  <select value={exForm.score} onChange={e=>setExForm(f=>({...f,score:e.target.value}))}>
-                    {scoreOptions.map(v=><option key={v} value={v}>{v}/{selected.maxScore}</option>)}</select></div>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <input
+                      type="number"
+                      value={exForm.score}
+                      min="0"
+                      max={selected.maxScore}
+                      step="0.1"
+                      onChange={e => setExForm(f => ({...f, score: e.target.value}))}
+                      style={{ width: 70, fontSize: 15, fontWeight: 700, fontFamily: 'var(--mono)', textAlign: 'center', padding: '4px 6px' }}
+                    />
+                    <span style={{ fontSize: 12, color: 'var(--text3)' }}>/ {selected.maxScore}</span>
+                  </div>
+                </div>
                 <div className="field" style={{margin:0}}><label>Quality</label>
                   <select value={exForm.quality} onChange={e=>setExForm(f=>({...f,quality:e.target.value}))}>
                     <option value="good">Good example</option>
