@@ -51,35 +51,28 @@ router.post('/roster', (req, res) => {
     WHERE id=?
   `);
 
-  const addMany = db.transaction((list) => {
-    for (const s of list) {
-      const fullName = (s.name || s.Name || '').trim();
-      const email = (s.email || s.Email || '').trim().toLowerCase();
-      if (!fullName) continue;
+  for (const s of students) {
+    const fullName = (s.name || s.Name || '').trim();
+    const email = (s.email || s.Email || '').trim().toLowerCase();
+    if (!fullName) continue;
 
-      // Parse first/last from full name
-      const parts = fullName.split(' ');
-      const lastName = parts.pop() || '';
-      const firstName = parts.join(' ') || lastName;
+    const parts = fullName.split(' ');
+    const lastName = parts.pop() || '';
+    const firstName = parts.join(' ') || lastName;
 
-      // Check existing
-      const existingEmail = email ? checkEmail.get(courseId, email) : null;
-      const existingName = checkName.get(courseId, fullName, firstName, lastName);
+    const existingEmail = email ? checkEmail.get(courseId, email) : null;
+    const existingName = checkName.get(courseId, fullName, firstName, lastName);
 
-      if (existingEmail || existingName) {
-        const existing = existingEmail || existingName;
-        // Update with parsed first/last if missing
-        updateSt.run(firstName, lastName, fullName, email, existing.id);
-        skipped++;
-        continue;
-      }
-
-      insertSt.run(uuidv4(), courseId, fullName, firstName, lastName, email);
-      added++;
+    if (existingEmail || existingName) {
+      const existing = existingEmail || existingName;
+      updateSt.run(firstName, lastName, fullName, email, existing.id);
+      skipped++;
+      continue;
     }
-  });
 
-  addMany(students);
+    insertSt.run(uuidv4(), courseId, fullName, firstName, lastName, email);
+    added++;
+  }
 
   // Match existing grades to roster by last name / filename
   const allStudents = db.prepare('SELECT * FROM students WHERE course_id=?').all(courseId);
