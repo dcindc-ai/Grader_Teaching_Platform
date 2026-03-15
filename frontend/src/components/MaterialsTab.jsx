@@ -6,8 +6,15 @@ const BASE = import.meta.env.PROD ? '' : 'http://localhost:3001';
 function h(pw) { return { 'x-admin-password': pw }; }
 
 async function getMaterials(courseId, pw) {
-  const r = await fetch(`${BASE}/api/materials?courseId=${courseId}`, { headers: h(pw) });
-  return r.json();
+  try {
+    const r = await fetch(`${BASE}/api/materials?courseId=${courseId}`, { headers: h(pw) });
+    if (!r.ok) throw new Error('Status ' + r.status);
+    const data = await r.json();
+    return Array.isArray(data) ? data : [];
+  } catch (e) {
+    console.error('getMaterials error:', e);
+    return [];
+  }
 }
 async function deleteMaterial(id, pw) {
   await fetch(`${BASE}/api/materials/${id}`, { method: 'DELETE', headers: h(pw) });
@@ -35,7 +42,10 @@ export default function MaterialsTab({ course, password }) {
   const fileRef = useRef();
 
   useEffect(() => {
-    getMaterials(course.id, password).then(setMaterials);
+    getMaterials(course.id, password).then(m => {
+      console.log('Materials loaded:', m.length);
+      setMaterials(m);
+    });
     getAssignments(course.id, password).then(setAssignments);
   }, [course.id]);
 
@@ -93,7 +103,7 @@ export default function MaterialsTab({ course, password }) {
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <div className="page-title">Course Materials</div>
-          <div className="page-sub">Upload lectures, readings, and links. Linked to grading for context-aware feedback.</div>
+          <div className="page-sub">Upload lectures, readings, and links. Lecture type = pulled into grading automatically.</div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={() => setShowLink(l => !l)} style={{ fontSize: 12 }}>
@@ -210,6 +220,13 @@ export default function MaterialsTab({ course, password }) {
                   <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{mat.name}</div>
                   <div style={{ fontSize: 11, color: 'var(--text3)', display: 'flex', gap: 8 }}>
                     <span style={{ color: TYPE_COLORS[mat.type] }}>{mat.type?.toUpperCase()}</span>
+                    {mat.material_type && (
+                      <span style={{ padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600,
+                        background: mat.material_type === 'lecture' ? 'rgba(37,99,235,0.1)' : mat.material_type === 'reference' ? 'rgba(217,119,6,0.1)' : 'rgba(22,163,74,0.1)',
+                        color: mat.material_type === 'lecture' ? 'var(--accent)' : mat.material_type === 'reference' ? 'var(--amber)' : 'var(--green)' }}>
+                        {mat.material_type}
+                      </span>
+                    )}
                     {mat.fileSize && <span>{Math.round(mat.fileSize/1024)}KB</span>}
                     {mat.extractedText && <span>{Math.round(mat.extractedText.length/1000)}K chars extracted</span>}
                     {mat.url && <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200 }}>{mat.url}</span>}
