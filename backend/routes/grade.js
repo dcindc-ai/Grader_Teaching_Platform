@@ -450,3 +450,22 @@ router.get('/canvas-csv', (req, res) => {
   res.setHeader('Content-Disposition', `attachment; filename="canvas_grades_${assignment?.name?.replace(/\s+/g,'_') || 'export'}.csv"`);
   res.send(rows.join('\n'));
 });
+
+// PUT /api/grade/:id — update grade fields
+router.put('/:id', (req, res) => {
+  const { studentName, total, scores, comments, instructor_paragraph, key_strength, key_improvement, summary, resources } = req.body;
+  db.prepare(`
+    UPDATE grades SET
+      student_name=?, total=?, scores=?, comments=?,
+      instructor_paragraph=?, key_strength=?, key_improvement=?, summary=?, resources=?
+    WHERE id=?
+  `).run(
+    studentName, total,
+    JSON.stringify(scores || {}),
+    JSON.stringify(comments || {}),
+    instructor_paragraph || '', key_strength || '', key_improvement || '', summary || '',
+    JSON.stringify(resources || []),
+    req.params.id
+  );
+  res.json(parseGrade(db.prepare('SELECT * FROM grades WHERE id=?').get(req.params.id)));
+});

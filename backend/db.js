@@ -207,7 +207,9 @@ function parseGrade(r) {
     fileName:r.file_name, total:r.total, maxScore:r.max_score,
     scores:JSON.parse(r.scores||'{}'), comments:JSON.parse(r.comments||'{}'),
     summary:r.summary, key_strength:r.key_strength, key_improvement:r.key_improvement,
-    instructor_paragraph:r.instructor_paragraph, gradedAt:r.graded_at };
+    instructor_paragraph:r.instructor_paragraph,
+    resources: r.resources ? JSON.parse(r.resources) : [],
+    gradedAt:r.graded_at };
 }
 
 function parseMaterial(r) {

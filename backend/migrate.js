@@ -13,6 +13,10 @@ function migrate(db) {
     // Grades
     "ALTER TABLE grades ADD COLUMN instructor_paragraph TEXT",
     "ALTER TABLE grades ADD COLUMN student_id TEXT",
+    "ALTER TABLE grades ADD COLUMN resources TEXT DEFAULT '[]'",
+    "ALTER TABLE grades ADD COLUMN summary TEXT",
+    "ALTER TABLE grades ADD COLUMN key_strength TEXT",
+    "ALTER TABLE grades ADD COLUMN key_improvement TEXT",
 
     // Always-On
     "ALTER TABLE always_on ADD COLUMN review_notes TEXT",

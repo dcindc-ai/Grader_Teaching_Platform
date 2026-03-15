@@ -287,6 +287,33 @@ router.get('/docx/:gradeId', async (req, res) => {
       }
     }
 
+    // Resources
+    const gradeResources = grade.resources || [];
+    if (gradeResources.length) {
+      children.push(new Paragraph({
+        children: [new TextRun({ text: 'Recommended Resources', bold: true, size: 22, color: BLUE, font: 'Arial' })],
+        spacing: { before: 200, after: 120 }
+      }));
+
+      for (const r of gradeResources) {
+        children.push(new Table({
+          width: { size: 9360, type: WidthType.DXA }, columnWidths: [9360],
+          rows: [new TableRow({ children: [new TableCell({
+            borders: { ...noBorders, left: { style: BorderStyle.SINGLE, size: 12, color: BLUE, space: 0 } },
+            width: { size: 9360, type: WidthType.DXA },
+            shading: { fill: 'EFF6FF', type: ShadingType.CLEAR },
+            margins: { top: 80, bottom: 80, left: 160, right: 120 },
+            children: [
+              new Paragraph({ children: [new TextRun({ text: r.title || r.url, bold: true, size: 20, color: BLUE, font: 'Arial' })], spacing: { after: 40 } }),
+              r.why ? new Paragraph({ children: [new TextRun({ text: r.why, size: 18, color: '6B7280', font: 'Arial' })], spacing: { after: 40 } }) : new Paragraph({}),
+              new Paragraph({ children: [new TextRun({ text: r.url, size: 16, color: '60A5FA', font: 'Arial' })] })
+            ]
+          })] })]
+        }));
+        children.push(new Paragraph({ spacing: { after: 80 } }));
+      }
+    }
+
     // Footer
     children.push(new Paragraph({
       border: { top: { style: BorderStyle.SINGLE, size: 2, color: 'E5E7EB', space: 1 } },
@@ -321,3 +348,200 @@ router.get('/docx/:gradeId', async (req, res) => {
 });
 
 module.exports = router;
+
+// GET /api/feedback/redlined-pdf/:gradeId
+router.get('/redlined-pdf/:gradeId', async (req, res) => {
+  const grade = parseGrade(db.prepare('SELECT * FROM grades WHERE id=?').get(req.params.gradeId));
+  if (!grade) return res.status(404).json({ error: 'Grade not found' });
+
+  const course = db.prepare('SELECT * FROM courses WHERE id=?').get(grade.courseId);
+
+  try {
+    const { PDFDocument, rgb, StandardFonts, PDFName } = require('pdf-lib');
+
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+    const italic = await doc.embedFont(StandardFonts.HelveticaOblique);
+
+    const W = 612, H = 792, M = 48, CW = W - M * 2, LH = 16;
+    const BLUE = rgb(0.15, 0.39, 0.92);
+    const RED = rgb(0.86, 0.15, 0.15);
+    const GREEN = rgb(0.09, 0.64, 0.29);
+    const AMBER = rgb(0.85, 0.47, 0.04);
+    const BLACK = rgb(0, 0, 0);
+    const GRAY = rgb(0.45, 0.45, 0.45);
+    const LIGHT_RED = rgb(1, 0.95, 0.95);
+    const LIGHT_GREEN = rgb(0.94, 1, 0.94);
+    const LIGHT_BLUE = rgb(0.93, 0.96, 1);
+
+    let page = doc.addPage([W, H]);
+    let y = H - M;
+
+    function np() { page = doc.addPage([W, H]); y = H - M; }
+    function chk(n = 40) { if (y < M + n) np(); }
+    function wrap(text, opts = {}) {
+      const { x = M, size = 10, color = BLACK, f = font, maxW = CW, indent = 0 } = opts;
+      const words = String(text || '').split(' ');
+      let line = '';
+      for (const w of words) {
+        const t = line ? line + ' ' + w : w;
+        if (f.widthOfTextAtSize(t, size) > maxW - indent && line) {
+          chk();
+          page.drawText(line, { x: x + (line === words[0] ? 0 : indent), y, size, font: f, color });
+          y -= LH;
+          line = w;
+        } else line = t;
+      }
+      if (line) {
+        chk();
+        page.drawText(line, { x, y, size, font: f, color });
+        y -= LH;
+      }
+    }
+    function rule(color = GRAY) {
+      chk(8);
+      page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 0.5, color });
+      y -= 8;
+    }
+    function badge(label, color, bgColor, bx, by) {
+      const w = font.widthOfTextAtSize(label, 9) + 12;
+      page.drawRectangle({ x: bx, y: by - 4, width: w, height: 14, color: bgColor, borderColor: color, borderWidth: 0.5 });
+      page.drawText(label, { x: bx + 6, y: by, size: 9, font: bold, color });
+      return w;
+    }
+
+    // ── Cover page ────────────────────────────────────────────────────────
+    page.drawRectangle({ x: 0, y: H - 90, width: W, height: 90, color: rgb(0.12, 0.25, 0.58) });
+    page.drawText('GRADED FEEDBACK', { x: M, y: H - 36, size: 22, font: bold, color: rgb(1,1,1) });
+    page.drawText(`${course?.name || 'GEOG 661'} — ${grade.assignmentName || 'Lab'}`, { x: M, y: H - 58, size: 12, font, color: rgb(0.8, 0.88, 1) });
+    page.drawText(`Student: ${grade.studentName || 'Unknown'} · ${new Date(grade.gradedAt).toLocaleDateString()}`, { x: M, y: H - 76, size: 10, font, color: rgb(0.8, 0.88, 1) });
+    y = H - 110;
+
+    // Score overview
+    const s = grade.scores || {};
+    const sections = [
+      ['Annotated Product', 'annotated_product', 2],
+      ['Narrative', 'narrative', 2],
+      ['Context', 'context', 1],
+      ['Overall Quality', 'overall_quality', 1]
+    ];
+
+    y -= 8;
+    const cellW = (CW - 12) / 4;
+    sections.forEach(([label, key, mx], i) => {
+      const val = parseFloat(s[key]) || 0;
+      const pct = val / mx;
+      const barColor = pct >= 0.85 ? GREEN : pct >= 0.6 ? AMBER : RED;
+      const cellX = M + i * (cellW + 4);
+      page.drawRectangle({ x: cellX, y: y - 36, width: cellW, height: 44, color: rgb(0.97, 0.97, 0.97) });
+      page.drawText(label.toUpperCase(), { x: cellX + 4, y, size: 7, font: bold, color: GRAY });
+      page.drawText(`${val}/${mx}`, { x: cellX + 4, y: y - 18, size: 18, font: bold, color: barColor });
+    });
+    y -= 52;
+
+    // Total
+    const totalVal = parseFloat(grade.total) || 0;
+    const totalMax = parseFloat(grade.maxScore) || 6;
+    const totalPct = totalVal / totalMax;
+    const totalColor = totalPct >= 0.85 ? GREEN : totalPct >= 0.7 ? AMBER : RED;
+    page.drawRectangle({ x: M, y: y - 8, width: CW, height: 28, color: rgb(0.93, 0.96, 1) });
+    page.drawText('TOTAL', { x: M + 8, y: y + 4, size: 10, font: bold, color: BLUE });
+    page.drawText(`${grade.total} / ${grade.maxScore}  (${Math.round(totalPct * 100)}%)`, { x: M + 80, y: y + 4, size: 14, font: bold, color: totalColor });
+    y -= 36;
+    rule(BLUE);
+
+    // Key strength / improvement
+    if (grade.key_strength) {
+      page.drawRectangle({ x: M, y: y - 8, width: CW, height: LH + 8, color: LIGHT_GREEN });
+      page.drawText('+ ' + grade.key_strength, { x: M + 8, y, size: 10, font: bold, color: GREEN });
+      y -= LH + 12;
+    }
+    if (grade.key_improvement) {
+      page.drawRectangle({ x: M, y: y - 8, width: CW, height: LH + 8, color: LIGHT_RED });
+      page.drawText('→ ' + grade.key_improvement, { x: M + 8, y, size: 10, font: bold, color: RED });
+      y -= LH + 12;
+    }
+    y -= 4;
+    rule();
+
+    // Instructor paragraph
+    page.drawText('INSTRUCTOR FEEDBACK', { x: M, y, size: 9, font: bold, color: BLUE });
+    y -= LH + 2;
+    page.drawRectangle({ x: M, y: y - 8, width: 4, height: 80, color: BLUE });
+    wrap(grade.instructor_paragraph || 'No feedback paragraph generated.', { x: M + 12, size: 11, f: italic, color: rgb(0.1, 0.1, 0.3), maxW: CW - 12 });
+    y -= 8;
+    rule();
+
+    // Section comments
+    for (const [key, label] of Object.entries({ annotated_product: 'Annotated Product', narrative: 'Narrative', context: 'Context', overall_quality: 'Overall Quality' })) {
+      const comments = grade.comments?.[key] || [];
+      if (!comments.length) continue;
+
+      chk(30);
+      page.drawText(label.toUpperCase(), { x: M, y, size: 9, font: bold, color: GRAY });
+      const secVal = parseFloat(s[key]) || 0;
+      const secMax = { annotated_product: 2, narrative: 2, context: 1, overall_quality: 1 }[key] || 1;
+      page.drawText(`${secVal}/${secMax}`, { x: W - M - 25, y, size: 10, font: bold, color: secVal/secMax >= 0.85 ? GREEN : secVal/secMax >= 0.6 ? AMBER : RED });
+      y -= LH;
+      page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 0.3, color: rgb(0.8, 0.8, 0.8) });
+      y -= 6;
+
+      for (const c of comments) {
+        const isPos = c.type === 'positive';
+        const commentColor = isPos ? GREEN : RED;
+        const bgColor = isPos ? LIGHT_GREEN : LIGHT_RED;
+        const prefix = isPos ? '+ ' : '✗ ';
+
+        chk(24);
+        const textW = CW - 20;
+        const approxH = Math.ceil(font.widthOfTextAtSize((c.text || ''), 10) / textW) * LH + 12;
+        page.drawRectangle({ x: M, y: y - approxH + LH, width: CW, height: approxH, color: bgColor });
+        page.drawRectangle({ x: M, y: y - approxH + LH, width: 3, height: approxH, color: commentColor });
+        wrap(prefix + (c.text || ''), { x: M + 8, size: 10, color: BLACK, maxW: textW });
+
+        if (c.rewrite && c.type !== 'positive') {
+          chk(20);
+          wrap('↳ ' + c.rewrite.replace(/^Suggested rewrite:\s*/i, ''), { x: M + 16, size: 9, f: italic, color: BLUE, maxW: CW - 16 });
+        }
+        y -= 4;
+      }
+      y -= 8;
+    }
+
+    // Resources
+    if (grade.resources?.length) {
+      chk(40);
+      rule(BLUE);
+      page.drawText('RECOMMENDED RESOURCES', { x: M, y, size: 9, font: bold, color: BLUE });
+      y -= LH + 2;
+
+      for (const r of grade.resources) {
+        chk(36);
+        page.drawRectangle({ x: M, y: y - 28, width: CW, height: 36, color: LIGHT_BLUE });
+        page.drawText(r.title || r.url, { x: M + 8, y, size: 11, font: bold, color: BLUE });
+        y -= LH;
+        if (r.why) {
+          page.drawText(r.why, { x: M + 8, y, size: 9, font, color: GRAY });
+          y -= LH;
+        }
+        page.drawText(r.url, { x: M + 8, y, size: 8, font, color: BLUE });
+        y -= LH + 8;
+      }
+    }
+
+    // Footer
+    chk(20);
+    rule();
+    page.drawText(`${course?.name || 'GEOG 661'} · Teaching Platform · INSTRUCTOR ONLY`, { x: M, y, size: 8, font, color: GRAY });
+
+    const pdfBytes = await doc.save();
+    const safeName = (grade.studentName || 'unknown').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}_graded_feedback.pdf"`);
+    res.send(Buffer.from(pdfBytes));
+  } catch (e) {
+    console.error('Redlined PDF error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
