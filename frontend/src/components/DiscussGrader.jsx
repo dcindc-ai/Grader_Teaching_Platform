@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { updateAssignment } from '../api.js';
 
 const BASE = import.meta.env.PROD ? '' : 'http://localhost:3001';
@@ -10,29 +10,44 @@ const RATING_COLORS = {
   'Unacceptable': '#DC2626'
 };
 
-export default function DiscussGrader({ course, password, assignments }) {
+// ── Unified Discussion Grader ────────────────────────────────────────────────
+// This is the main view. One student at a time.
+// Grade rubric + write instructor response in one place.
+// Copy everything to Canvas when done.
+
+export default function DiscussGrader({ course, password, assignments, question, onSubmissionGraded }) {
+  const isCompletion = course.gradingModel === 'completion';
+
   const [selectedAssignment, setSelectedAssignment] = useState(null);
   const [rubricCriteria, setRubricCriteria] = useState([]);
   const [totalMax, setTotalMax] = useState(0);
+
+  // Student input
   const [studentName, setStudentName] = useState('');
   const [submission, setSubmission] = useState('');
+
+  // Grading state
   const [grading, setGrading] = useState(false);
   const [result, setResult] = useState(null);
   const [scores, setScores] = useState({});
   const [ratings, setRatings] = useState({});
   const [rationale, setRationale] = useState({});
-  const [feedback, setFeedback] = useState('');
-  const [copied, setCopied] = useState('');
-  const [importingRubric, setImportingRubric] = useState(false);
+
+  // Response state
+  const [response, setResponse] = useState('');
   const [regenerating, setRegenerating] = useState(false);
-  const [savedAsExample, setSavedAsExample] = useState(false);
-  const [history, setHistory] = useState([]);
-  const [showHistory, setShowHistory] = useState(false);
-  const [viewingHistory, setViewingHistory] = useState(null);
-  // Regenerate controls
   const [tone, setTone] = useState('warm');
-  const [length, setLength] = useState('medium');
-  const [directness, setDirectness] = useState('balanced');
+  const [sentences, setSentences] = useState(5);
+  const [wordsPerSentence, setWordsPerSentence] = useState(18);
+  const [structure, setStructure] = useState('organized');
+  const [refinement, setRefinement] = useState('');
+
+  // UI state
+  const [copied, setCopied] = useState('');
+  const [savedAsExample, setSavedAsExample] = useState(false);
+  const [importingRubric, setImportingRubric] = useState(false);
+  const [showRationale, setShowRationale] = useState(false);
+  const [showControls, setShowControls] = useState(false);
   const csvRef = useRef();
 
   useEffect(() => {
@@ -44,8 +59,12 @@ export default function DiscussGrader({ course, password, assignments }) {
     if (selectedAssignment?.rubricCriteria?.length) {
       setRubricCriteria(selectedAssignment.rubricCriteria);
       setTotalMax(selectedAssignment.rubricCriteria.reduce((s, c) => s + c.maxPoints, 0));
+    } else {
+      setRubricCriteria([]);
+      setTotalMax(0);
     }
-    if (selectedAssignment) loadHistory();
+    setResult(null); setScores({}); setRatings({}); setRationale({});
+    setResponse(''); setSavedAsExample(false);
   }, [selectedAssignment?.id]);
 
   async function importRubricCSV(text) {
@@ -69,26 +88,73 @@ export default function DiscussGrader({ course, password, assignments }) {
     setImportingRubric(false);
   }
 
-  async function loadHistory() {
-    if (!selectedAssignment) return;
+  // Grade rubric + generate response in one call
+  async function gradeAndRespond() {
+    if (!submission.trim() || !studentName.trim()) return;
+    setGrading(true); setResult(null); setResponse('');
+
     try {
-      const r = await fetch(`${BASE}/api/grade?courseId=${course.id}&assignmentId=${selectedAssignment.id}`, {
-        headers: { 'x-admin-password': password }
+      // 1. Grade rubric (if rubric mode)
+      let gradeResult = null;
+      if (!isCompletion && rubricCriteria.length) {
+        const r = await fetch(`${BASE}/api/discussgrade/grade`, {
+          method: 'POST',
+          headers: { 'x-admin-password': password, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            courseId: course.id, assignmentId: selectedAssignment?.id,
+            studentName, discussionQuestion: question || selectedAssignment?.description || '',
+            submission, rubricCriteria, instructorBio: course.instructorBio
+          })
+        });
+        gradeResult = await r.json();
+        if (gradeResult.error) throw new Error(gradeResult.error);
+        setResult(gradeResult);
+        const initScores = {}, initRatings = {}, initRationale = {};
+        gradeResult.criteriaGrades?.forEach(cg => {
+          initScores[cg.criterionName] = cg.suggestedPoints;
+          initRatings[cg.criterionName] = cg.suggestedRating;
+          initRationale[cg.criterionName] = { scoring: cg.scoringRationale || '', student: cg.studentComment || '' };
+        });
+        setScores(initScores); setRatings(initRatings); setRationale(initRationale);
+      }
+
+      // 2. Generate instructor response
+      const resp2 = await fetch(`${BASE}/api/discuss/reply`, {
+        method: 'POST',
+        headers: { 'x-admin-password': password, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          courseId: course.id, question: question || selectedAssignment?.description || '',
+          studentName, studentResponse: submission,
+          tone, sentenceCount: sentences, wordsPerSentence, structure
+        })
       });
-      const grades = await r.json();
-      setHistory(grades.filter(g => g.comments && Array.isArray(g.comments)));
-    } catch (e) {}
+      const d2 = await resp2.json();
+      setResponse(d2.reply || '');
+
+      onSubmissionGraded?.(studentName, submission);
+    } catch (e) { alert('Error: ' + e.message); }
+    setGrading(false);
   }
 
-  async function loadHistory() {
-    if (!selectedAssignment) return;
+  async function regenerateResponse() {
+    if (!studentName || !submission) return;
+    setRegenerating(true);
     try {
-      const r = await fetch(`${BASE}/api/grade?courseId=${course.id}&assignmentId=${selectedAssignment.id}`, {
-        headers: { 'x-admin-password': password }
+      const resp = await fetch(`${BASE}/api/discuss/reply`, {
+        method: 'POST',
+        headers: { 'x-admin-password': password, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          courseId: course.id, question: question || selectedAssignment?.description || '',
+          studentName, studentResponse: submission,
+          tone, sentenceCount: sentences, wordsPerSentence, structure,
+          refinement, previousResponse: response
+        })
       });
-      const grades = await r.json();
-      setHistory(grades || []);
-    } catch (e) {}
+      const d = await resp.json();
+      setResponse(d.reply || '');
+      setRefinement('');
+    } catch (e) { alert('Error: ' + e.message); }
+    setRegenerating(false);
   }
 
   async function saveAsExample() {
@@ -99,128 +165,46 @@ export default function DiscussGrader({ course, password, assignments }) {
       scoringRationale: rationale[cg.criterionName]?.scoring ?? cg.scoringRationale,
       maxPoints: rubricCriteria.find(c => c.name === cg.criterionName)?.maxPoints || 15
     })) || [];
-
     try {
       const r = await fetch(`${BASE}/api/discussgrade/save-as-example`, {
         method: 'POST',
         headers: { 'x-admin-password': password, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          assignmentId: selectedAssignment.id,
-          courseId: course.id,
-          studentName,
-          submission,
-          criteriaGrades,
-          totalPoints: getTotal(),
-          totalMax,
-          instructorParagraph: feedback,
-          scores
+          assignmentId: selectedAssignment.id, courseId: course.id,
+          studentName, submission, criteriaGrades,
+          totalPoints: getTotal(), totalMax, instructorParagraph: response
         })
       });
       const d = await r.json();
       if (d.ok) setSavedAsExample(true);
-    } catch (e) { alert('Error saving: ' + e.message); }
-  }
-
-  async function gradeSubmission() {
-    if (!submission.trim() || !rubricCriteria.length) return;
-    setGrading(true); setResult(null);
-    try {
-      const r = await fetch(`${BASE}/api/discussgrade/grade`, {
-        method: 'POST',
-        headers: { 'x-admin-password': password, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          courseId: course.id, assignmentId: selectedAssignment?.id,
-          studentName, discussionQuestion: selectedAssignment?.description || course.discussionDefaultQuestion || '',
-          submission, rubricCriteria, instructorBio: course.instructorBio
-        })
-      });
-      const d = await r.json();
-      if (d.error) throw new Error(d.error);
-      setResult(d);
-      setFeedback(d.instructorParagraph || '');
-      const initScores = {}, initRatings = {}, initRationale = {};
-      d.criteriaGrades?.forEach(cg => {
-        initScores[cg.criterionName] = cg.suggestedPoints;
-        initRatings[cg.criterionName] = cg.suggestedRating;
-        initRationale[cg.criterionName] = { scoring: cg.scoringRationale || '', student: cg.studentComment || '' };
-      });
-      setScores(initScores); setRatings(initRatings); setRationale(initRationale);
-    } catch (e) { alert('Error: ' + e.message); }
-    setGrading(false);
-    loadHistory();
-  }
-
-  async function regenerateFeedback() {
-    if (!result) return;
-    setRegenerating(true);
-    try {
-      const criteriaGrades = result.criteriaGrades?.map(cg => ({
-        ...cg, finalPoints: scores[cg.criterionName], suggestedRating: ratings[cg.criterionName]
-      }));
-      const r = await fetch(`${BASE}/api/discussgrade/regenerate-feedback`, {
-        method: 'POST',
-        headers: { 'x-admin-password': password, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentName, overallSummary: result.overallSummary, criteriaGrades, rubricCriteria, tone, length, directness, instructorBio: course.instructorBio })
-      });
-      const d = await r.json();
-      if (d.paragraph) setFeedback(d.paragraph);
-    } catch (e) { alert('Error: ' + e.message); }
-    setRegenerating(false);
+    } catch (e) { alert(e.message); }
   }
 
   function getTotal() {
     return Object.values(scores).reduce((s, v) => s + (parseFloat(v) || 0), 0);
   }
 
-  function getPct() { return totalMax > 0 ? Math.round(getTotal() / totalMax * 100) : 0; }
-
   function totalColor() {
-    const p = getPct();
-    return p >= 90 ? '#16A34A' : p >= 80 ? '#2563EB' : p >= 70 ? '#D97706' : '#DC2626';
+    const p = totalMax ? getTotal() / totalMax : 0;
+    return p >= 0.9 ? '#16A34A' : p >= 0.8 ? '#2563EB' : p >= 0.7 ? '#D97706' : '#DC2626';
   }
 
-  function buildCanvasText() {
+  function buildCanvasOutput() {
     const lines = [];
-    rubricCriteria.forEach(c => {
-      const pts = scores[c.name] ?? 0;
-      const rat = rationale[c.name]?.student || '';
-      const rating = ratings[c.name] || '';
-      const shortName = c.name.includes(':') ? c.name.split(':').pop().trim() : c.name;
-      lines.push(`${shortName}`);
-      lines.push(`Score: ${pts} / ${c.maxPoints} pts — ${rating}`);
-      if (rat) lines.push(`Comment: ${rat}`);
+    if (!isCompletion && rubricCriteria.length) {
+      rubricCriteria.forEach(c => {
+        const pts = scores[c.name] ?? 0;
+        const rat = rationale[c.name]?.student || '';
+        const shortName = c.name.includes(':') ? c.name.split(':').pop().trim() : c.name;
+        lines.push(`${shortName}: ${pts} / ${c.maxPoints} pts — ${ratings[c.name] || ''}`);
+        if (rat) lines.push(rat);
+        lines.push('');
+      });
+      lines.push(`Total: ${getTotal().toFixed(0)} / ${totalMax} pts`);
       lines.push('');
-    });
-    lines.push(`TOTAL: ${getTotal().toFixed(0)} / ${totalMax} pts`);
-    if (feedback) { lines.push(''); lines.push('---'); lines.push(feedback); }
+    }
+    if (response) lines.push(response);
     return lines.join('\n');
-  }
-
-  function buildCriterionText(c) {
-    const pts = scores[c.name] ?? 0;
-    const rat = rationale[c.name]?.student || '';
-    const rating = ratings[c.name] || '';
-    return `${pts} / ${c.maxPoints} pts — ${rating}${rat ? '\n' + rat : ''}`;
-  }
-
-  function downloadDocx() {
-    const criteriaGrades = result?.criteriaGrades?.map(cg => ({
-      ...cg,
-      finalPoints: scores[cg.criterionName] ?? cg.suggestedPoints,
-      suggestedRating: ratings[cg.criterionName] ?? cg.suggestedRating,
-      scoringRationale: rationale[cg.criterionName]?.scoring ?? cg.scoringRationale,
-      studentComment: rationale[cg.criterionName]?.student ?? cg.studentComment,
-      maxPoints: rubricCriteria.find(c => c.name === cg.criterionName)?.maxPoints || 15
-    })) || [];
-
-    const data = {
-      courseName: `${course.name} — ${course.fullName || ''}`,
-      assignmentName: selectedAssignment?.name || '',
-      studentName, date: new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
-      criteriaGrades, instructorParagraph: feedback
-    };
-
-    window.open(`${BASE}/api/discussgrade/docx?password=${encodeURIComponent(password)}&data=${encodeURIComponent(JSON.stringify(data))}`, '_blank');
   }
 
   function copy(text, key) {
@@ -231,177 +215,156 @@ export default function DiscussGrader({ course, password, assignments }) {
 
   function nextStudent() {
     setStudentName(''); setSubmission(''); setResult(null);
-    setScores({}); setRatings({}); setRationale({}); setFeedback('');
-    setSavedAsExample(false);
+    setScores({}); setRatings({}); setRationale({});
+    setResponse(''); setSavedAsExample(false); setRefinement('');
   }
 
-  const hasRubric = rubricCriteria.length > 0;
-  const hasResult = result !== null;
+  const hasResult = result !== null || (isCompletion && response);
+  const hasRubric = !isCompletion && rubricCriteria.length > 0;
 
-  const isCompletion = course.gradingModel === 'completion';
-
+  // Completion mode
   if (isCompletion) {
     return <CompletionGrader course={course} password={password} assignments={assignments} />;
   }
 
   return (
-    <div style={{ maxWidth: 860 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-        <div>
-          <div style={{ fontSize: 19, fontWeight: 700 }}>Grade Discussion</div>
-          <div style={{ fontSize: 13, color: 'var(--text2)' }}>Rubric grading · 3 outputs for Canvas</div>
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <select value={selectedAssignment?.id || ''} style={{ fontSize: 13 }}
-            onChange={e => setSelectedAssignment(assignments?.find(x => x.id === e.target.value) || null)}>
+    <div>
+      {/* Header row */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <select value={selectedAssignment?.id || ''} style={{ fontSize: 13, fontWeight: 500 }}
+            onChange={e => setSelectedAssignment(assignments?.find(a => a.id === e.target.value) || null)}>
             {assignments?.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
+          {hasRubric && (
+            <span style={{ fontSize: 11, color: 'var(--green)', padding: '2px 8px', background: 'rgba(22,163,74,0.08)', border: '1px solid rgba(22,163,74,0.2)', borderRadius: 10 }}>
+              ✓ Rubric loaded · {totalMax} pts
+            </span>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
           <input ref={csvRef} type="file" accept=".csv" style={{ display: 'none' }}
-            onChange={async e => { const f = e.target.files[0]; if (f) { importRubricCSV(await f.text()); e.target.value=''; } }} />
-          <button onClick={() => csvRef.current.click()} disabled={importingRubric} style={{ fontSize: 12 }}>
-            {importingRubric ? 'Importing…' : hasRubric ? '↺ Update rubric' : '↑ Import rubric CSV'}
-          </button>
-          {history.length > 0 && (
-            <button onClick={() => { setShowHistory(h => !h); setViewingHistory(null); }}
-              style={{ fontSize: 12, fontWeight: showHistory ? 600 : 400,
-                background: showHistory ? 'var(--bg3)' : 'var(--bg)',
-                borderColor: showHistory ? 'var(--border2)' : 'var(--border)' }}>
-              📚 History ({history.length})
+            onChange={async e => { const f = e.target.files[0]; if (f) { importRubricCSV(await f.text()); e.target.value = ''; } }} />
+          {!hasRubric && (
+            <button onClick={() => csvRef.current.click()} disabled={importingRubric} style={{ fontSize: 12 }}>
+              {importingRubric ? 'Importing…' : '↑ Import rubric CSV'}
+            </button>
+          )}
+          {hasRubric && (
+            <button onClick={() => csvRef.current.click()} disabled={importingRubric} style={{ fontSize: 11, color: 'var(--text3)' }}>
+              ↺ Update rubric
             </button>
           )}
         </div>
       </div>
 
-      {/* Rubric pills */}
-      {hasRubric && (
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
-          {rubricCriteria.map(c => (
-            <span key={c.id} style={{ fontSize: 11, padding: '3px 10px', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 20, color: 'var(--text2)' }}>
-              {c.name.split(':').pop().trim()} · {c.maxPoints}pts
-            </span>
-          ))}
-          <span style={{ fontSize: 11, padding: '3px 10px', background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.2)', borderRadius: 20, color: 'var(--accent)', fontWeight: 600 }}>
-            {totalMax} pts total
-          </span>
-        </div>
-      )}
-
       {!hasRubric && (
-        <div style={{ padding: 20, textAlign: 'center', border: '1.5px dashed var(--border2)', borderRadius: 8, marginBottom: 14, color: 'var(--text3)', fontSize: 13 }}>
-          Import your Canvas rubric CSV once — it saves automatically and loads every time.
+        <div style={{ padding: '12px 14px', marginBottom: 12, background: 'rgba(217,119,6,0.06)', border: '1px solid rgba(217,119,6,0.2)', borderRadius: 8, fontSize: 13, color: 'var(--amber)' }}>
+          Import your Canvas rubric CSV to enable rubric grading. Import once — saves permanently.
         </div>
       )}
 
-      <div className="two-col" style={{ gap: 14, alignItems: 'start' }}>
-        {/* Left: input */}
+      <div className="two-col" style={{ gap: 16, alignItems: 'start' }}>
+        {/* Left: student input */}
         <div>
           <div className="field">
             <label>Student name</label>
-            <input type="text" value={studentName} onChange={e => setStudentName(e.target.value)} placeholder="First and last name" />
+            <input type="text" value={studentName} onChange={e => setStudentName(e.target.value)}
+              placeholder="First and last name" />
           </div>
-          <div className="field" style={{ marginBottom: 0 }}>
+          <div className="field" style={{ marginBottom: 10 }}>
             <label>Student submission (initial post + peer responses)</label>
             <textarea rows={14} value={submission} onChange={e => setSubmission(e.target.value)}
-              placeholder="Paste the student's full discussion post here…"
+              placeholder="Paste the full submission here…"
               style={{ fontSize: 13, lineHeight: 1.65, resize: 'vertical' }} />
           </div>
-          <button className="primary" style={{ width: '100%', padding: 12, fontSize: 14, fontWeight: 600, marginTop: 10 }}
-            onClick={gradeSubmission} disabled={grading || !submission.trim() || !hasRubric}>
-            {grading ? 'Grading…' : 'Grade this submission →'}
+
+          {/* Response style controls — collapsed by default */}
+          <div style={{ marginBottom: 10 }}>
+            <button className="ghost" style={{ fontSize: 12, width: '100%', textAlign: 'left', padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 6 }}
+              onClick={() => setShowControls(s => !s)}>
+              {showControls ? '▾' : '▸'} Response style controls
+              <span style={{ fontSize: 11, color: 'var(--text3)', marginLeft: 8 }}>
+                {tone} · {sentences} sentences · {wordsPerSentence} words max
+              </span>
+            </button>
+            {showControls && (
+              <div style={{ padding: '12px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: '0 0 6px 6px', marginTop: -1 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+                  <div>
+                    <label>Tone</label>
+                    <select value={tone} onChange={e => setTone(e.target.value)} style={{ fontSize: 12 }}>
+                      <option value="warm">Warm mentor</option>
+                      <option value="direct">Plain and direct</option>
+                      <option value="formal">Formal academic</option>
+                      <option value="encouraging">Encouraging</option>
+                      <option value="socratic">Socratic — ask questions</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label>Structure</label>
+                    <select value={structure} onChange={e => setStructure(e.target.value)} style={{ fontSize: 12 }}>
+                      <option value="organized">Strengths → gaps → forward</option>
+                      <option value="flowing">Weave together naturally</option>
+                      <option value="critical">Gaps first → strengths</option>
+                      <option value="question">End with a question</option>
+                    </select>
+                  </div>
+                </div>
+                <div style={{ marginBottom: 8 }}>
+                  <label>Sentences: <strong>{sentences}</strong></label>
+                  <input type="range" min={2} max={10} value={sentences} onChange={e => setSentences(Number(e.target.value))} />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text3)' }}>
+                    <span>2</span><span>5 (standard)</span><span>10</span>
+                  </div>
+                </div>
+                <div>
+                  <label>Max words per sentence: <strong>{wordsPerSentence}</strong></label>
+                  <input type="range" min={10} max={25} value={wordsPerSentence} onChange={e => setWordsPerSentence(Number(e.target.value))} />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text3)' }}>
+                    <span>10 (punchy)</span><span>18 (standard)</span><span>25</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <button className="primary" style={{ width: '100%', padding: 12, fontSize: 14, fontWeight: 600 }}
+            onClick={gradeAndRespond}
+            disabled={grading || !submission.trim() || !studentName.trim()}>
+            {grading ? 'Grading and generating response…' : hasRubric ? 'Grade + generate response →' : 'Generate response →'}
           </button>
-          {grading && <div style={{ marginTop: 8, fontSize: 12, color: 'var(--accent)', textAlign: 'center' }}>Analyzing against {rubricCriteria.length} criteria…</div>}
         </div>
 
-        {/* Right: results */}
+        {/* Right: output */}
         <div>
           {!hasResult && !grading && (
-            <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>
-              <div style={{ fontSize: 28, marginBottom: 10 }}>📋</div>
-              Results appear here.<br/>Three outputs ready to copy into Canvas.
+            <div style={{ padding: '60px 0', textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>
+              <div style={{ fontSize: 32, marginBottom: 10 }}>✏️</div>
+              Paste the student's submission and click Generate.<br />
+              {hasRubric ? 'Rubric scores and response generated together.' : 'Import a rubric CSV to also get per-criterion scores.'}
             </div>
           )}
 
           {hasResult && (
             <>
-              {/* Grade banner */}
-              <div style={{ padding: '12px 16px', marginBottom: 12, background: `${totalColor()}12`, border: `2px solid ${totalColor()}40`, borderRadius: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: totalColor() }}>Final Grade</div>
-                  <div style={{ fontSize: 13, fontWeight: 600, marginTop: 2 }}>{studentName}</div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <span style={{ fontFamily: 'var(--mono)', fontSize: 34, fontWeight: 700, color: totalColor() }}>{getTotal().toFixed(0)}</span>
-                  <span style={{ fontSize: 15, color: 'var(--text2)' }}> / {totalMax}</span>
-                  <div style={{ fontSize: 12, color: totalColor(), fontWeight: 500 }}>{getPct()}%</div>
-                </div>
-              </div>
-
-              {/* Quick summary table */}
-              <div className="card" style={{ marginBottom: 10, padding: '10px 12px' }}>
-                <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text3)', marginBottom: 8 }}>Score summary</div>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                  <tbody>
-                    {rubricCriteria.map(c => {
-                      const pts = scores[c.name] ?? 0;
-                      const pct = pts / c.maxPoints;
-                      const color = pct >= 0.9 ? 'var(--green)' : pct >= 0.8 ? 'var(--accent)' : pct >= 0.7 ? 'var(--amber)' : 'var(--red)';
-                      const shortName = c.name.includes(':') ? c.name.split(':').pop().trim() : c.name;
-                      return (
-                        <tr key={c.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                          <td style={{ padding: '5px 0', color: 'var(--text2)' }}>{shortName}</td>
-                          <td style={{ padding: '5px 0', textAlign: 'center', color: 'var(--text3)', fontSize: 11 }}>{ratings[c.name] || ''}</td>
-                          <td style={{ padding: '5px 0', textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, color }}>{pts}/{c.maxPoints}</td>
-                        </tr>
-                      );
-                    })}
-                    <tr>
-                      <td style={{ padding: '6px 0', fontWeight: 700 }} colSpan={2}>Total</td>
-                      <td style={{ padding: '6px 0', textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, color: totalColor(), fontSize: 15 }}>{getTotal().toFixed(0)}/{totalMax}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Scoring Rationale block — instructor reference */}
-              <div className="card" style={{ marginBottom: 10, background: 'var(--bg2)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text3)' }}>
-                    Scoring Rationale (Instructor Reference)
+              {/* Score summary — compact */}
+              {hasRubric && (
+                <div style={{ padding: '10px 14px', marginBottom: 12,
+                  background: `${totalColor()}10`, border: `2px solid ${totalColor()}30`,
+                  borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{studentName}</div>
+                  <div>
+                    <span style={{ fontFamily: 'var(--mono)', fontSize: 26, fontWeight: 700, color: totalColor() }}>
+                      {getTotal().toFixed(0)}
+                    </span>
+                    <span style={{ fontSize: 13, color: 'var(--text2)' }}> / {totalMax}</span>
                   </div>
-                  <button
-                    onClick={() => {
-                      const lines = rubricCriteria.map(c => {
-                        const pts = scores[c.name] ?? 0;
-                        const shortName = c.name.includes(':') ? c.name.split(':').pop().trim() : c.name;
-                        const rat = rationale[c.name]?.scoring || '';
-                        return `${shortName} (${pts}/${c.maxPoints}): ${rat}`;
-                      }).join('\n');
-                      navigator.clipboard.writeText('Scoring Rationale (Instructor Reference)\n\n' + lines);
-                      setCopied('rationale-block');
-                      setTimeout(() => setCopied(''), 2000);
-                    }}
-                    style={{ fontSize: 10, padding: '2px 8px',
-                      background: copied === 'rationale-block' ? 'var(--accent)' : 'transparent',
-                      color: copied === 'rationale-block' ? '#fff' : 'var(--text3)',
-                      border: `1px solid ${copied === 'rationale-block' ? 'var(--accent)' : 'var(--border)'}` }}>
-                    {copied === 'rationale-block' ? '✓ Copied' : 'Copy all rationale'}
-                  </button>
                 </div>
-                {rubricCriteria.map(c => {
-                  const pts = scores[c.name] ?? 0;
-                  const shortName = c.name.includes(':') ? c.name.split(':').pop().trim() : c.name;
-                  const rat = rationale[c.name]?.scoring || '';
-                  return (
-                    <div key={c.id} style={{ marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
-                      <span style={{ fontWeight: 700, fontSize: 12 }}>{shortName} ({pts}/{c.maxPoints}): </span>
-                      <span style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.65 }}>{rat || <em style={{ color: 'var(--text3)' }}>No rationale recorded</em>}</span>
-                    </div>
-                  );
-                })}
-              </div>
+              )}
 
-              {/* Criterion scores */}
-              {rubricCriteria.map(c => {
+              {/* Rubric criteria — compact cards */}
+              {hasRubric && rubricCriteria.map(c => {
                 const pts = scores[c.name] ?? 0;
                 const rat = ratings[c.name] || '';
                 const ratText = rationale[c.name] || {};
@@ -409,333 +372,190 @@ export default function DiscussGrader({ course, password, assignments }) {
 
                 return (
                   <div key={c.id} className="card" style={{ marginBottom: 8 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <div style={{ fontWeight: 600, fontSize: 13 }}>{shortName}</div>
-                    <button
-                      onClick={() => {
-                        const rat = rationale[c.name]?.student || '';
-                        const rating = ratings[c.name] || '';
-                        const pts = scores[c.name] ?? 0;
-                        navigator.clipboard.writeText(`${pts} / ${c.maxPoints} pts — ${rating}${rat ? '\n' + rat : ''}`);
-                        setCopied(`crit-${c.id}`);
-                        setTimeout(() => setCopied(''), 2000);
-                      }}
-                      style={{ fontSize: 10, padding: '2px 8px',
-                        background: copied === `crit-${c.id}` ? 'var(--accent)' : 'transparent',
-                        color: copied === `crit-${c.id}` ? '#fff' : 'var(--text3)',
-                        border: `1px solid ${copied === `crit-${c.id}` ? 'var(--accent)' : 'var(--border)'}` }}>
-                      {copied === `crit-${c.id}` ? '✓ Copied' : 'Copy score + comment'}
-                    </button>
-                  </div>
-
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <span style={{ fontWeight: 600, fontSize: 12 }}>{shortName}</span>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        <button onClick={() => {
+                          const comment = ratText.student || '';
+                          copy(`${pts} / ${c.maxPoints} pts — ${rat}${comment ? '\n' + comment : ''}`, `c-${c.id}`);
+                        }} style={{ fontSize: 10, padding: '2px 7px',
+                          background: copied === `c-${c.id}` ? 'var(--accent)' : 'transparent',
+                          color: copied === `c-${c.id}` ? '#fff' : 'var(--text3)',
+                          border: `1px solid ${copied === `c-${c.id}` ? 'var(--accent)' : 'var(--border)'}` }}>
+                          {copied === `c-${c.id}` ? '✓' : 'Copy'}
+                        </button>
+                        <input type="number" value={pts} min="0" max={c.maxPoints} step="0.5"
+                          onChange={e => setScores(s => ({ ...s, [c.name]: parseFloat(e.target.value) || 0 }))}
+                          style={{ width: 46, fontSize: 14, fontWeight: 700, fontFamily: 'var(--mono)', textAlign: 'center', padding: '2px 4px' }} />
+                        <span style={{ fontSize: 11, color: 'var(--text3)' }}>/ {c.maxPoints}</span>
+                      </div>
+                    </div>
                     {/* Rating buttons */}
-                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
+                    <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', marginBottom: 6 }}>
                       {c.ratings.sort((a,b) => b.points - a.points).map(r => (
                         <button key={r.name}
                           onClick={() => { setRatings(rv => ({...rv, [c.name]: r.name})); setScores(s => ({...s, [c.name]: r.points})); }}
                           style={{
-                            fontSize: 11, padding: '4px 10px', borderRadius: 4,
+                            fontSize: 10, padding: '3px 8px', borderRadius: 4,
                             background: rat === r.name ? `${RATING_COLORS[r.name]}18` : 'var(--bg)',
                             color: rat === r.name ? RATING_COLORS[r.name] : 'var(--text2)',
                             border: `1px solid ${rat === r.name ? RATING_COLORS[r.name] : 'var(--border2)'}`,
                             fontWeight: rat === r.name ? 700 : 400
-                          }}>{r.name} · {r.points}</button>
+                          }}>{r.name}</button>
                       ))}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
-                        <input type="number" value={pts} min="0" max={c.maxPoints} step="0.5"
-                          onChange={e => setScores(s => ({...s, [c.name]: parseFloat(e.target.value)||0}))}
-                          style={{ width: 50, fontSize: 15, fontWeight: 700, fontFamily: 'var(--mono)', textAlign: 'center', padding: '3px 4px' }} />
-                        <span style={{ fontSize: 12, color: 'var(--text3)' }}>/ {c.maxPoints}</span>
-                      </div>
                     </div>
-
-                    {/* Scoring rationale (instructor only) */}
-                    <div style={{ marginBottom: 6 }}>
-                      <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text3)', marginBottom: 3 }}>Scoring rationale (instructor only)</div>
-                      <textarea rows={2} value={ratText.scoring || ''}
-                        onChange={e => setRationale(r => ({...r, [c.name]: {...r[c.name], scoring: e.target.value}}))}
-                        style={{ fontSize: 12, lineHeight: 1.5, background: 'var(--bg2)' }} />
-                    </div>
-
-                    {/* Student comment */}
-                    <div>
-                      <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text3)', marginBottom: 3 }}>Comment to student</div>
-                      <textarea rows={2} value={ratText.student || ''}
-                        onChange={e => setRationale(r => ({...r, [c.name]: {...r[c.name], student: e.target.value}}))}
-                        style={{ fontSize: 12, lineHeight: 1.5 }} />
-                    </div>
+                    <textarea rows={2} value={ratText.student || ''}
+                      onChange={e => setRationale(r => ({...r, [c.name]: {...r[c.name], student: e.target.value}}))}
+                      placeholder="Comment to student…"
+                      style={{ fontSize: 11, lineHeight: 1.5, marginBottom: 0 }} />
                   </div>
                 );
               })}
 
-              {/* Instructor feedback */}
-              <div className="card" style={{ marginBottom: 10, borderColor: 'rgba(37,99,235,0.3)', borderWidth: 2 }}>
+              {/* Scoring rationale — collapsed */}
+              {hasRubric && (
+                <div style={{ marginBottom: 10 }}>
+                  <button className="ghost" style={{ fontSize: 11, width: '100%', textAlign: 'left', padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 6 }}
+                    onClick={() => setShowRationale(s => !s)}>
+                    {showRationale ? '▾' : '▸'} Scoring rationale (instructor reference)
+                    <button onClick={(e) => {
+                      e.stopPropagation();
+                      const lines = ['Scoring Rationale (Instructor Reference)', ''];
+                      rubricCriteria.forEach(c => {
+                        const pts = scores[c.name] ?? 0;
+                        const shortName = c.name.includes(':') ? c.name.split(':').pop().trim() : c.name;
+                        const rat = rationale[c.name]?.scoring || '';
+                        lines.push(`${shortName} (${pts}/${c.maxPoints}): ${rat}`);
+                      });
+                      copy(lines.join('\n'), 'rationale');
+                    }} style={{ float: 'right', fontSize: 10, padding: '1px 7px', marginLeft: 8,
+                      background: copied === 'rationale' ? 'var(--accent)' : 'transparent',
+                      color: copied === 'rationale' ? '#fff' : 'var(--text3)',
+                      border: `1px solid ${copied === 'rationale' ? 'var(--accent)' : 'var(--border)'}` }}>
+                      {copied === 'rationale' ? '✓ Copied' : 'Copy all'}
+                    </button>
+                  </button>
+                  {showRationale && (
+                    <div style={{ padding: '10px 12px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: '0 0 6px 6px', marginTop: -1 }}>
+                      {rubricCriteria.map(c => {
+                        const pts = scores[c.name] ?? 0;
+                        const shortName = c.name.includes(':') ? c.name.split(':').pop().trim() : c.name;
+                        return (
+                          <div key={c.id} style={{ marginBottom: 8 }}>
+                            <span style={{ fontWeight: 700, fontSize: 12 }}>{shortName} ({pts}/{c.maxPoints}): </span>
+                            <textarea rows={2} value={rationale[c.name]?.scoring || ''}
+                              onChange={e => setRationale(r => ({...r, [c.name]: {...r[c.name], scoring: e.target.value}}))}
+                              style={{ fontSize: 11, lineHeight: 1.5, display: 'block', width: '100%', marginTop: 2 }} />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Instructor response */}
+              <div style={{ marginBottom: 10, padding: '12px 14px', border: '2px solid rgba(37,99,235,0.2)', borderRadius: 8, background: 'rgba(37,99,235,0.02)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--accent)' }}>
-                    Instructor Feedback to Student
+                  <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--accent)' }}>
+                    Instructor response
+                  </span>
+                  <div style={{ display: 'flex', gap: 6, fontSize: 11, color: 'var(--text3)' }}>
+                    <span>{response.split(/\s+/).filter(Boolean).length}w</span>
+                    <span>{response.split(/[.!?]+/).filter(s => s.trim()).length}s</span>
                   </div>
-                  <button onClick={() => copy(feedback, 'fb')} style={{ fontSize: 11, padding: '3px 10px', color: copied === 'fb' ? '#fff' : 'var(--accent)', background: copied === 'fb' ? 'var(--accent)' : 'transparent', border: '1px solid var(--accent)' }}>
-                    {copied === 'fb' ? '✓ Copied' : 'Copy'}
-                  </button>
                 </div>
-                <textarea rows={5} value={feedback} onChange={e => setFeedback(e.target.value)}
-                  style={{ fontSize: 13, lineHeight: 1.75, fontStyle: 'italic', marginBottom: 10 }} />
+                <textarea value={response} onChange={e => setResponse(e.target.value)}
+                  style={{ width: '100%', minHeight: 140, fontSize: 13, lineHeight: 1.8,
+                    fontStyle: 'italic', border: 'none', background: 'transparent',
+                    resize: 'vertical', outline: 'none', padding: 0 }} />
 
-                {/* Regenerate controls */}
-                <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10 }}>
-                  <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 8, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Regenerate with different parameters</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 10 }}>
-                    <div>
-                      <label>Tone</label>
-                      <select value={tone} onChange={e => setTone(e.target.value)} style={{ fontSize: 12 }}>
-                        <option value="warm">Warm mentor</option>
-                        <option value="plain">Plain and direct</option>
-                        <option value="formal">Formal academic</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label>Length</label>
-                      <select value={length} onChange={e => setLength(e.target.value)} style={{ fontSize: 12 }}>
-                        <option value="short">Short (2-3 sentences)</option>
-                        <option value="medium">Medium (3-4 sentences)</option>
-                        <option value="long">Detailed (4-5 sentences)</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label>Directness</label>
-                      <select value={directness} onChange={e => setDirectness(e.target.value)} style={{ fontSize: 12 }}>
-                        <option value="soft">Gentle</option>
-                        <option value="balanced">Balanced</option>
-                        <option value="direct">Direct</option>
-                      </select>
-                    </div>
-                  </div>
-                  <button onClick={regenerateFeedback} disabled={regenerating} style={{ width: '100%', fontSize: 12 }}>
-                    {regenerating ? 'Regenerating…' : '↻ Regenerate feedback'}
+                {/* Refinement */}
+                <div style={{ display: 'flex', gap: 6, marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border)' }}>
+                  <input type="text" value={refinement} onChange={e => setRefinement(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && refinement.trim() && regenerateResponse()}
+                    placeholder="Adjust: e.g. 'be more direct about the citation gap'"
+                    style={{ flex: 1, fontSize: 12 }} />
+                  <button onClick={regenerateResponse} disabled={regenerating || !refinement.trim()}
+                    style={{ fontSize: 12, flexShrink: 0 }}>
+                    {regenerating ? '…' : '↻ Apply'}
+                  </button>
+                  <button onClick={() => { setRefinement(''); regenerateResponse(); }} disabled={regenerating}
+                    style={{ fontSize: 12, flexShrink: 0, color: 'var(--text3)' }}>
+                    ↻ Regenerate
                   </button>
                 </div>
               </div>
 
-              {/* Actions */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <button className="primary" style={{ padding: 12, fontSize: 14, fontWeight: 600 }}
-                  onClick={() => copy(buildCanvasText(), 'all')}>
-                  {copied === 'all' ? '✓ Copied — paste into Canvas SpeedGrader' : '📋 Copy all for Canvas SpeedGrader'}
+              {/* Action buttons */}
+              <button className="primary" style={{ width: '100%', padding: 11, fontSize: 14, fontWeight: 600, marginBottom: 6 }}
+                onClick={() => copy(buildCanvasOutput(), 'all')}>
+                {copied === 'all' ? '✓ Copied — paste into Canvas SpeedGrader' : '📋 Copy all to Canvas'}
+              </button>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                <button style={{ flex: 1, fontSize: 12 }} onClick={() => copy(response, 'resp')}>
+                  {copied === 'resp' ? '✓' : 'Copy response only'}
                 </button>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <button style={{ flex: 1, fontSize: 12 }} onClick={downloadDocx}>
-                    ↓ Download Word doc
+                {hasRubric && (
+                  <button style={{ flex: 1, fontSize: 12 }} onClick={() => copy(`${getTotal().toFixed(0)} / ${totalMax}`, 'grade')}>
+                    {copied === 'grade' ? '✓' : 'Copy grade'}
                   </button>
-                  <button style={{ flex: 1, fontSize: 12 }}
-                    onClick={() => copy(`${getTotal().toFixed(0)} / ${totalMax}`, 'grade')}>
-                    {copied === 'grade' ? '✓ Copied' : 'Copy final grade'}
-                  </button>
-                  <button style={{ fontSize: 12 }} onClick={nextStudent}>Next →</button>
-                </div>
+                )}
+                <button style={{ fontSize: 12 }} onClick={nextStudent}>Next →</button>
               </div>
+              <button onClick={saveAsExample} disabled={savedAsExample || !result}
+                style={{ width: '100%', fontSize: 12, padding: '7px',
+                  background: savedAsExample ? 'rgba(22,163,74,0.08)' : 'var(--bg)',
+                  color: savedAsExample ? 'var(--green)' : 'var(--text3)',
+                  border: `1px solid ${savedAsExample ? 'var(--green)' : 'var(--border)'}` }}>
+                {savedAsExample ? '✓ Saved as calibration example' : '📌 Save as calibration example'}
+              </button>
             </>
           )}
         </div>
       </div>
-      {/* History panel */}
-      {showHistory && (
-        <div style={{ marginTop: 20, borderTop: '2px solid var(--border)', paddingTop: 16 }}>
-          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>
-            Grading History — {selectedAssignment?.name}
-          </div>
-          {viewingHistory ? (
-            <div>
-              <button className="ghost" style={{ fontSize: 12, marginBottom: 12 }}
-                onClick={() => setViewingHistory(null)}>← Back to list</button>
-              <HistoryDetail grade={viewingHistory} rubricCriteria={rubricCriteria} />
-            </div>
-          ) : (
-            <div>
-              {history.map(g => (
-                <div key={g.id} className="card card-hover" style={{ marginBottom: 6, padding: '10px 14px' }}
-                  onClick={() => setViewingHistory(g)}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: 14 }}>{g.studentName || 'Unknown'}</div>
-                      <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
-                        Graded {new Date(g.gradedAt).toLocaleDateString()}
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <span style={{ fontFamily: 'var(--mono)', fontSize: 20, fontWeight: 700,
-                        color: parseFloat(g.total)/parseFloat(g.maxScore) >= 0.9 ? 'var(--green)' :
-                               parseFloat(g.total)/parseFloat(g.maxScore) >= 0.8 ? 'var(--accent)' : 'var(--amber)' }}>
-                        {g.total}/{g.maxScore}
-                      </span>
-                      <span style={{ fontSize: 12, color: 'var(--accent)' }}>View rationale →</span>
-                    </div>
-                  </div>
-                  {g.key_improvement && (
-                    <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 4 }}>→ {g.key_improvement}</div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }
 
-function HistoryDetail({ grade, rubricCriteria }) {
-  const criteriaGrades = Array.isArray(grade.comments) ? grade.comments : [];
-  const [copiedRationale, setCopiedRationale] = useState(false);
-
-  function buildRationaleText() {
-    const lines = [`${grade.studentName} — ${grade.assignmentName}`, `Total: ${grade.total}/${grade.maxScore}`, '', 'Scoring Rationale (Instructor Reference)', ''];
-    criteriaGrades.forEach(cg => {
-      const shortName = (cg.criterionName || '').split(':').pop().trim();
-      lines.push(`${shortName} (${cg.finalPoints || cg.suggestedPoints}/${cg.maxPoints || 15}):`);
-      lines.push(cg.scoringRationale || cg.studentComment || '');
-      lines.push('');
-    });
-    if (grade.instructor_paragraph) {
-      lines.push('Instructor Feedback:');
-      lines.push(grade.instructor_paragraph);
-    }
-    return lines.join('\n');
-  }
-
-  function copy(text, key) {
-    navigator.clipboard.writeText(text);
-    setCopiedRationale(true);
-    setTimeout(() => setCopiedRationale(false), 2000);
-  }
-
-  return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-        <div>
-          <div style={{ fontWeight: 700, fontSize: 17 }}>{grade.studentName}</div>
-          <div style={{ fontSize: 12, color: 'var(--text2)' }}>
-            {grade.assignmentName} · Graded {new Date(grade.gradedAt).toLocaleDateString()}
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <span style={{ fontFamily: 'var(--mono)', fontSize: 24, fontWeight: 700,
-            color: parseFloat(grade.total)/parseFloat(grade.maxScore) >= 0.9 ? 'var(--green)' :
-                   parseFloat(grade.total)/parseFloat(grade.maxScore) >= 0.8 ? 'var(--accent)' : 'var(--amber)' }}>
-            {grade.total}/{grade.maxScore}
-          </span>
-          <button onClick={() => copy(buildRationaleText())} style={{ fontSize: 12 }}>
-            {copiedRationale ? '✓ Copied' : 'Copy rationale'}
-          </button>
-        </div>
-      </div>
-
-      {criteriaGrades.length > 0 ? (
-        criteriaGrades.map((cg, i) => {
-          const shortName = (cg.criterionName || '').split(':').pop().trim();
-          const pts = cg.finalPoints || cg.suggestedPoints || 0;
-          const maxPts = cg.maxPoints || 15;
-          return (
-            <div key={i} className="card" style={{ marginBottom: 8 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                <span style={{ fontWeight: 600, fontSize: 13 }}>{shortName}</span>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  {cg.suggestedRating && (
-                    <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4,
-                      color: {'Accomplished':'#16A34A','Proficient':'#2563EB','Needs Improvement':'#D97706','Unacceptable':'#DC2626'}[cg.suggestedRating] || 'var(--text2)',
-                      background: {'Accomplished':'rgba(22,163,74,0.1)','Proficient':'rgba(37,99,235,0.1)','Needs Improvement':'rgba(217,119,6,0.1)','Unacceptable':'rgba(220,38,38,0.1)'}[cg.suggestedRating] || 'var(--bg3)',
-                      border: '1px solid currentColor' }}>
-                      {cg.suggestedRating}
-                    </span>
-                  )}
-                  <span style={{ fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 16 }}>
-                    {pts}/{maxPts}
-                  </span>
-                </div>
-              </div>
-              {cg.scoringRationale && (
-                <div style={{ marginBottom: 6 }}>
-                  <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text3)', marginBottom: 3 }}>Scoring rationale</div>
-                  <div style={{ fontSize: 12, lineHeight: 1.65, color: 'var(--text)', padding: '8px 10px', background: 'var(--bg2)', borderRadius: 5, borderLeft: '3px solid var(--border2)' }}>
-                    {cg.scoringRationale}
-                  </div>
-                </div>
-              )}
-              {cg.studentComment && (
-                <div>
-                  <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text3)', marginBottom: 3 }}>Comment to student</div>
-                  <div style={{ fontSize: 12, lineHeight: 1.65, color: 'var(--text2)', fontStyle: 'italic' }}>{cg.studentComment}</div>
-                </div>
-              )}
-            </div>
-          );
-        })
-      ) : (
-        <div style={{ fontSize: 13, color: 'var(--text3)', padding: '20px 0', textAlign: 'center' }}>
-          No per-criterion rationale stored for this grade.<br/>
-          Grades from the new grader will have full rationale.
-        </div>
-      )}
-
-      {grade.instructor_paragraph && (
-        <div style={{ marginTop: 10, padding: '12px 16px', background: 'rgba(37,99,235,0.04)', border: '1px solid rgba(37,99,235,0.2)', borderRadius: 8 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--accent)', marginBottom: 6 }}>Instructor Feedback</div>
-          <p style={{ fontSize: 13, lineHeight: 1.75, fontStyle: 'italic', margin: 0 }}>{grade.instructor_paragraph}</p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-
-// ── Completion / Pass-Fail Grader (UMD style) ──────────────────────────────
+// ── Completion / Pass-Fail Grader (UMD style) ────────────────────────────────
 
 function CompletionGrader({ course, password, assignments }) {
-  const BASE = import.meta.env.PROD ? '' : 'http://localhost:3001';
   const [selectedAssignment, setSelectedAssignment] = useState(assignments?.[0] || null);
   const [studentName, setStudentName] = useState('');
   const [submission, setSubmission] = useState('');
   const [comment, setComment] = useState('');
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [history, setHistory] = useState([]);
-
   const maxPts = selectedAssignment?.maxScore || 10;
 
   async function markComplete() {
     setSaving(true);
     try {
-      const r = await fetch(`${BASE}/api/discussgrade/grade`, {
+      await fetch(`${BASE}/api/discussgrade/grade`, {
         method: 'POST',
         headers: { 'x-admin-password': password, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          courseId: course.id,
-          assignmentId: selectedAssignment?.id,
-          studentName,
-          discussionQuestion: '',
-          submission,
-          rubricCriteria: [{ id: 'completion', name: 'Completion', maxPoints: maxPts, ratings: [
-            { name: 'Complete', points: maxPts, description: 'Post submitted' },
-            { name: 'Incomplete', points: 0, description: 'No post submitted' }
-          ]}],
+          courseId: course.id, assignmentId: selectedAssignment?.id,
+          studentName, discussionQuestion: '',
+          submission: submission || '(no text recorded)',
+          rubricCriteria: [{ id: 'completion', name: 'Completion', maxPoints: maxPts,
+            ratings: [{ name: 'Complete', points: maxPts, description: 'Submitted' }] }],
           instructorBio: course.instructorBio
         })
       });
       setHistory(h => [{ studentName, comment, pts: maxPts, date: new Date() }, ...h]);
-      setSaved(true);
-      setStudentName('');
-      setSubmission('');
-      setComment('');
-      setTimeout(() => setSaved(false), 2000);
+      setStudentName(''); setSubmission(''); setComment('');
     } catch (e) { alert(e.message); }
     setSaving(false);
   }
 
   return (
-    <div style={{ maxWidth: 680 }}>
+    <div style={{ maxWidth: 600 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <div>
-          <div style={{ fontSize: 19, fontWeight: 700 }}>Grade Discussion</div>
-          <div style={{ fontSize: 13, color: 'var(--text2)' }}>Completion grading · {maxPts} pts for participating</div>
+          <div style={{ fontWeight: 600, fontSize: 15 }}>Completion Grading</div>
+          <div style={{ fontSize: 12, color: 'var(--text2)' }}>{maxPts} pts for participating</div>
         </div>
         <select value={selectedAssignment?.id || ''} style={{ fontSize: 13 }}
           onChange={e => setSelectedAssignment(assignments?.find(a => a.id === e.target.value))}>
@@ -749,39 +569,30 @@ function CompletionGrader({ course, password, assignments }) {
           <input type="text" value={studentName} onChange={e => setStudentName(e.target.value)} placeholder="First and last name" />
         </div>
         <div className="field">
-          <label>Student post (optional — paste to keep a record)</label>
-          <textarea rows={6} value={submission} onChange={e => setSubmission(e.target.value)}
-            placeholder="Paste student's post here to keep it on record…"
-            style={{ fontSize: 13, lineHeight: 1.6 }} />
+          <label>Student post (optional)</label>
+          <textarea rows={5} value={submission} onChange={e => setSubmission(e.target.value)}
+            placeholder="Paste to keep a record…" style={{ fontSize: 13 }} />
         </div>
         <div className="field" style={{ marginBottom: 0 }}>
-          <label>Comment to student (optional)</label>
+          <label>Comment (optional)</label>
           <textarea rows={2} value={comment} onChange={e => setComment(e.target.value)}
-            placeholder="Any feedback you want to leave…" style={{ fontSize: 13 }} />
+            style={{ fontSize: 13 }} />
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button className="primary" style={{ flex: 1, padding: 12, fontSize: 14, fontWeight: 600 }}
-          onClick={markComplete} disabled={saving || !studentName.trim()}>
-          {saving ? 'Saving…' : saved ? `✓ Marked complete — ${maxPts}/${maxPts} pts` : `Mark complete — ${maxPts}/${maxPts} pts`}
-        </button>
-        <button style={{ fontSize: 13, padding: '12px 16px' }}
-          onClick={() => { setStudentName(''); setSubmission(''); setComment(''); }}>
-          Clear
-        </button>
-      </div>
+      <button className="primary" style={{ width: '100%', padding: 12, fontSize: 14, fontWeight: 600 }}
+        onClick={markComplete} disabled={saving || !studentName.trim()}>
+        {saving ? 'Saving…' : `✓ Mark complete — ${maxPts}/${maxPts} pts`}
+      </button>
 
       {history.length > 0 && (
-        <div style={{ marginTop: 20 }}>
-          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 10 }}>
-            Marked complete this session ({history.length})
-          </div>
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Marked complete this session</div>
           {history.map((h, i) => (
-            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 12px',
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 12px',
               background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 6, marginBottom: 4, fontSize: 13 }}>
               <span style={{ fontWeight: 500 }}>{h.studentName}</span>
-              <span style={{ color: 'var(--green)', fontWeight: 600 }}>{h.pts}/{maxPts} pts</span>
+              <span style={{ color: 'var(--green)', fontWeight: 600 }}>{h.pts}/{maxPts}</span>
             </div>
           ))}
         </div>
