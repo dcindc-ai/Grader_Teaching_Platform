@@ -73,10 +73,21 @@ Rating levels:
 ${c.ratings.map(r => `  - ${r.name} (${r.points} pts): ${r.description}`).join('\n')}`
   ).join('\n');
 
+  // Load calibration examples for this assignment
+  let exampleContext = '';
+  if (assignmentId) {
+    const examples = db.prepare('SELECT * FROM examples WHERE assignment_id=? ORDER BY created_at DESC LIMIT 5').all(assignmentId);
+    if (examples.length) {
+      exampleContext = '\n\nCALIBRATION EXAMPLES (previously graded by this instructor):\n' +
+        examples.map(e => `Student: ${e.student_name}, Score: ${e.score}/${e.quality === 'good' ? 'strong' : 'weak'} example\n${(e.content || '').slice(0, 400)}`).join('\n---\n');
+    }
+  }
+
   const system = `You are ${instructorBio || 'an instructor'} grading a student discussion post.
 
 Be fair, specific, and constructive. Grade based on what the student actually wrote, not what they could have written.
-Be direct — if something is missing, say so clearly. Use the student's first name.`;
+Be direct — if something is missing, say so clearly. Use the student's first name only.
+${exampleContext ? 'Use the calibration examples to calibrate your scoring to this instructor\'s standards.' : ''}`;
 
   const prompt = `DISCUSSION QUESTION:
 ${discussionQuestion || 'No question provided'}
@@ -404,6 +415,45 @@ router.get('/docx', async (req, res) => {
     res.send(buffer);
   } catch (e) {
     console.error('DOCX error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/discussgrade/save-as-example — promote a graded discussion to calibration bank
+router.post('/save-as-example', async (req, res) => {
+  const { assignmentId, courseId, studentName, submission, criteriaGrades, totalPoints, totalMax, instructorParagraph, scores } = req.body;
+  if (!assignmentId || !courseId) return res.status(400).json({ error: 'assignmentId and courseId required' });
+
+  const { v4: uuidv4 } = require('uuid');
+
+  // Build content string from submission + scoring rationale
+  const rationaleLines = (criteriaGrades || []).map(cg => {
+    const shortName = (cg.criterionName || '').split(':').pop().trim();
+    return `${shortName} (${cg.finalPoints || cg.suggestedPoints}/${cg.maxPoints || 15}): ${cg.scoringRationale || cg.studentComment || ''}`;
+  }).join('\n');
+
+  const content = [
+    'SUBMISSION:\n' + (submission || '').slice(0, 1000),
+    '\nSCORING RATIONALE:\n' + rationaleLines,
+    instructorParagraph ? '\nINSTRUCTOR FEEDBACK:\n' + instructorParagraph : ''
+  ].filter(Boolean).join('\n');
+
+  const score = parseFloat(totalPoints) || 0;
+  const max = parseFloat(totalMax) || 75;
+  const quality = score / max >= 0.8 ? 'good' : 'weak';
+
+  try {
+    db.prepare(`
+      INSERT INTO examples (id, assignment_id, course_id, student_name, score, quality, notes, content)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      uuidv4(), assignmentId, courseId, studentName,
+      score, quality,
+      `Discussion calibration example — ${score}/${max} pts`,
+      content
+    );
+    res.json({ ok: true, quality, score });
+  } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });

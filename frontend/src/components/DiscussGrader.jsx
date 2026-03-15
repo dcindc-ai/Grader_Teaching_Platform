@@ -25,6 +25,7 @@ export default function DiscussGrader({ course, password, assignments }) {
   const [copied, setCopied] = useState('');
   const [importingRubric, setImportingRubric] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
+  const [savedAsExample, setSavedAsExample] = useState(false);
   const [history, setHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
   const [viewingHistory, setViewingHistory] = useState(null);
@@ -88,6 +89,36 @@ export default function DiscussGrader({ course, password, assignments }) {
       const grades = await r.json();
       setHistory(grades || []);
     } catch (e) {}
+  }
+
+  async function saveAsExample() {
+    if (!result || !selectedAssignment) return;
+    const criteriaGrades = result.criteriaGrades?.map(cg => ({
+      ...cg,
+      finalPoints: scores[cg.criterionName] ?? cg.suggestedPoints,
+      scoringRationale: rationale[cg.criterionName]?.scoring ?? cg.scoringRationale,
+      maxPoints: rubricCriteria.find(c => c.name === cg.criterionName)?.maxPoints || 15
+    })) || [];
+
+    try {
+      const r = await fetch(`${BASE}/api/discussgrade/save-as-example`, {
+        method: 'POST',
+        headers: { 'x-admin-password': password, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          assignmentId: selectedAssignment.id,
+          courseId: course.id,
+          studentName,
+          submission,
+          criteriaGrades,
+          totalPoints: getTotal(),
+          totalMax,
+          instructorParagraph: feedback,
+          scores
+        })
+      });
+      const d = await r.json();
+      if (d.ok) setSavedAsExample(true);
+    } catch (e) { alert('Error saving: ' + e.message); }
   }
 
   async function gradeSubmission() {
@@ -201,6 +232,7 @@ export default function DiscussGrader({ course, password, assignments }) {
   function nextStudent() {
     setStudentName(''); setSubmission(''); setResult(null);
     setScores({}); setRatings({}); setRationale({}); setFeedback('');
+    setSavedAsExample(false);
   }
 
   const hasRubric = rubricCriteria.length > 0;
