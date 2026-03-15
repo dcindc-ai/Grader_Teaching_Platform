@@ -296,7 +296,7 @@ Return ONLY valid JSON, no fences:
 
 // ─── Grade a single submission ────────────────────────────────────────────
 
-async function gradeOne(filePath, assignment, course) {
+async function gradeOne(filePath, assignment, course, skipAlwaysOn=false) {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const base64 = fs.readFileSync(filePath).toString('base64');
 
@@ -329,7 +329,8 @@ async function gradeOne(filePath, assignment, course) {
   const text = resp.content.find(b => b.type === 'text')?.text || '{}';
   const gradeResult = JSON.parse(text.replace(/```json\n?|```/g, '').trim());
 
-  // Generate Always-On in parallel
+  // Generate Always-On (skipped in batch mode to save tokens)
+  if (skipAlwaysOn) return { gradeResult: parsed }; in parallel
   let alwaysOn = null;
   try {
     alwaysOn = await generateAlwaysOn(client, gradeResult, course, assignment);
@@ -370,7 +371,20 @@ router.post('/batch', upload.array('files', 50), async (req, res) => {
     res.write(`data: ${JSON.stringify({ type:'progress', file:originalName, index:i, total:files.length, status:'grading' })}\n\n`);
 
     try {
-      const { gradeResult, alwaysOn } = await gradeOne(file.path, assignment, course);
+      // Retry up to 3 times on rate limit errors
+      let gradeResult, alwaysOn;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          ({ gradeResult, alwaysOn } = await gradeOne(file.path, assignment, course, files.length > 3));
+          break;
+        } catch (e) {
+          if (e.message.includes('429') && attempt < 2) {
+            const wait = (attempt + 1) * 15000; // 15s, 30s
+            res.write(`data: ${JSON.stringify({ type:'progress', file:originalName, index:i, total:files.length, status:`rate limited — waiting ${wait/1000}s...` })}\n\n`);
+            await new Promise(r => setTimeout(r, wait));
+          } else throw e;
+        }
+      }
       const gradeId = uuidv4();
 
       insertGrade.run(
@@ -407,8 +421,8 @@ router.post('/batch', upload.array('files', 50), async (req, res) => {
           .run(finalStudentName, gradeId);
       }
 
-      // Small delay between files to avoid API rate limits
-      if (i < files.length - 1) await new Promise(r => setTimeout(r, 500));
+      // Delay between files to respect rate limits (30k tokens/min)
+      if (i < files.length - 1) await new Promise(r => setTimeout(r, 3000));
 
       const grade = parseGrade(db.prepare('SELECT * FROM grades WHERE id=?').get(gradeId));
       res.write(`data: ${JSON.stringify({ type:'result', file:originalName, index:i, total:files.length, grade, hasAlwaysOn:!!alwaysOn, status:'done' })}\n\n`);
