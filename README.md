@@ -1,6 +1,7 @@
 # Teaching Platform
 
-AI-assisted teaching platform for multi-course instruction. Built for Dave Cook (UMD / Wake Forest).
+AI-assisted teaching platform for multi-course instruction. Built by Dave Cook (Professor at University of Maryland and Wake Forest).
+This is a platform that aims to help streamline the grading of homework in large classes, and to personalize the learning experience.
 
 ## Features
 
