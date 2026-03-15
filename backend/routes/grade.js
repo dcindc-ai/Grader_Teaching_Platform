@@ -485,5 +485,18 @@ router.put('/:id', (req, res) => {
     JSON.stringify(resources || []),
     req.params.id
   );
+
+  // Cascade name change to Always-On items tied to this grade
+  if (studentName) {
+    db.prepare('UPDATE always_on SET student_name=? WHERE grade_id=?')
+      .run(studentName, req.params.id);
+    // Also update by matching Unknown records in same course
+    const grade = db.prepare('SELECT * FROM grades WHERE id=?').get(req.params.id);
+    if (grade) {
+      db.prepare("UPDATE always_on SET student_name=? WHERE course_id=? AND student_name='Unknown' AND assignment_id=?")
+        .run(studentName, grade.course_id, grade.assignment_id);
+    }
+  }
+
   res.json(parseGrade(db.prepare('SELECT * FROM grades WHERE id=?').get(req.params.id)));
 });

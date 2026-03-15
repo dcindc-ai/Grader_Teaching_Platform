@@ -28,7 +28,7 @@ router.get('/counts', (req, res) => {
 
 // PUT update status (approve / reject / edit)
 router.put('/:id', (req, res) => {
-  const { status, feedbackSentences, links, reviewNotes } = req.body;
+  const { status, feedbackSentences, links, reviewNotes, studentName } = req.body;
   db.prepare(`
     UPDATE always_on SET status=?, feedback_sentences=?, links=?, review_notes=?, reviewed_at=datetime('now')
     WHERE id=?
@@ -39,6 +39,10 @@ router.put('/:id', (req, res) => {
     reviewNotes || '',
     req.params.id
   );
+  // Update student name separately if provided
+  if (studentName !== undefined) {
+    db.prepare('UPDATE always_on SET student_name=? WHERE id=?').run(studentName, req.params.id);
+  }
   res.json(parseAlwaysOn(db.prepare('SELECT * FROM always_on WHERE id=?').get(req.params.id)));
 });
 

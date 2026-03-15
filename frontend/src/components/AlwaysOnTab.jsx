@@ -49,7 +49,7 @@ function firstName(name) {
 export default function AlwaysOnTab({ course, password }) {
   const [items, setItems] = useState([]);
   const [filter, setFilter] = useState('pending');
-  const [editing, setEditing] = useState(null);
+  const [editing, setEditing] = useState(null); // { id, field }
   const [editForm, setEditForm] = useState({});
   const [saving, setSaving] = useState(false);
   const [classSummary, setClassSummary] = useState(null);
@@ -93,12 +93,12 @@ export default function AlwaysOnTab({ course, password }) {
 
   function startEdit(item) {
     setEditing(item.id);
-    setEditForm({ feedbackSentences: item.feedbackSentences || '', links: JSON.parse(JSON.stringify(item.links || [])), reviewNotes: '' });
+    setEditForm({ studentName: item.studentName || '', feedbackSentences: item.feedbackSentences || '', links: JSON.parse(JSON.stringify(item.links || [])), reviewNotes: '' });
   }
 
   async function saveEdit(item) {
     setSaving(true);
-    const updated = await updateItem(item.id, { status: 'approved', ...editForm }, password);
+    const updated = await updateItem(item.id, { status: 'approved', studentName: editForm.studentName, ...editForm }, password);
     setItems(its => its.map(x => x.id === updated.id ? updated : x));
     setEditing(null);
     setSaving(false);
@@ -196,7 +196,36 @@ export default function AlwaysOnTab({ course, password }) {
           {/* Header */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
             <div>
-              <div style={{ fontWeight: 700, fontSize: 15 }}>{firstName(item.studentName)}</div>
+              {editing?.id === item.id && editing?.field === 'name' ? (
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <input type="text" defaultValue={item.studentName || ''}
+                    autoFocus
+                    onKeyDown={async e => {
+                      if (e.key === 'Enter') {
+                        const newName = e.target.value.trim();
+                        if (newName) {
+                          await updateItem(item.id, { ...item, studentName: newName, feedbackSentences: item.feedbackSentences, links: item.links }, password);
+                          setItems(its => its.map(x => x.id === item.id ? { ...x, studentName: newName } : x));
+                        }
+                        setEditing(null);
+                      }
+                      if (e.key === 'Escape') setEditing(null);
+                    }}
+                    style={{ fontSize: 14, fontWeight: 700, width: 180 }} />
+                  <span style={{ fontSize: 11, color: 'var(--text3)' }}>Enter to save</span>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <div style={{ fontWeight: 700, fontSize: 15,
+                    color: (!item.studentName || item.studentName === 'Unknown') ? 'var(--red)' : 'var(--text)' }}>
+                    {item.studentName && item.studentName !== 'Unknown' ? firstName(item.studentName) : '⚠ Unknown — click to assign'}
+                  </div>
+                  <button className="ghost" style={{ fontSize: 10, padding: '1px 6px', color: 'var(--text3)' }}
+                    onClick={() => setEditing({ id: item.id, field: 'name' })}>
+                    ✏ edit
+                  </button>
+                </div>
+              )}
               <div style={{ fontSize: 12, color: 'var(--text2)' }}>{item.assignmentName} · {new Date(item.createdAt).toLocaleDateString()}</div>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -225,6 +254,22 @@ export default function AlwaysOnTab({ course, password }) {
             <div>
               <div className="field">
                 <label>Feedback</label>
+                {/* Student name assign */}
+                <div className="field">
+                  <label>Student name</label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input type="text" value={editForm.studentName || ''}
+                      onChange={e => setEditForm(f => ({ ...f, studentName: e.target.value }))}
+                      placeholder="Assign to student…"
+                      style={{ flex: 1, fontSize: 13, fontWeight: editForm.studentName && editForm.studentName !== 'Unknown' ? 600 : 400 }} />
+                    {editForm.studentName === 'Unknown' || !editForm.studentName ? (
+                      <span style={{ fontSize: 11, color: 'var(--amber)', alignSelf: 'center', flexShrink: 0 }}>⚠ unassigned</span>
+                    ) : (
+                      <span style={{ fontSize: 11, color: 'var(--green)', alignSelf: 'center', flexShrink: 0 }}>✓ assigned</span>
+                    )}
+                  </div>
+                </div>
+
                 <textarea rows={3} value={editForm.feedbackSentences}
                   onChange={e => setEditForm(f => ({ ...f, feedbackSentences: e.target.value }))}
                   style={{ fontSize: 13 }} />
