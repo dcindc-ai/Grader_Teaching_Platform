@@ -18,6 +18,9 @@ function migrate(db) {
     "ALTER TABLE grades ADD COLUMN key_strength TEXT",
     "ALTER TABLE grades ADD COLUMN key_improvement TEXT",
 
+    // Materials
+    "ALTER TABLE materials ADD COLUMN material_type TEXT DEFAULT 'lecture'",
+
     // Always-On
     "ALTER TABLE always_on ADD COLUMN review_notes TEXT",
   ];

@@ -77,7 +77,7 @@ router.get('/', (req, res) => {
 
 // POST upload file
 router.post('/upload', upload.single('file'), async (req, res) => {
-  const { courseId, name, weekNumber, assignmentId } = req.body;
+  const { courseId, name, weekNumber, assignmentId, materialType } = req.body;
   const file = req.file;
   if (!file || !courseId) return res.status(400).json({ error: 'File and courseId required' });
 
@@ -95,7 +95,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     .get(courseId, name || file.originalname)?.v || 0;
 
   db.prepare(`
-    INSERT INTO materials (id,course_id,name,type,week_number,assignment_id,file_path,extracted_text,file_size,version)
+    INSERT INTO materials (id,course_id,name,type,week_number,assignment_id,file_path,extracted_text,file_size,version,material_type)
     VALUES (?,?,?,?,?,?,?,?,?,?)
   `).run(
     id, courseId, name || file.originalname, type,

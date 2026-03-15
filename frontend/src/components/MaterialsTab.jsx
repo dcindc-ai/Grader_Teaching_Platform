@@ -30,8 +30,8 @@ export default function MaterialsTab({ course, password }) {
   const [uploading, setUploading] = useState(false);
   const [preview, setPreview] = useState(null);
   const [showLink, setShowLink] = useState(false);
-  const [linkForm, setLinkForm] = useState({ name: '', url: '', weekNumber: '', assignmentId: '' });
-  const [uploadForm, setUploadForm] = useState({ name: '', weekNumber: '', assignmentId: '' });
+  const [linkForm, setLinkForm] = useState({ name: '', url: '', weekNumber: '', assignmentId: '', materialType: 'lecture' });
+  const [uploadForm, setUploadForm] = useState({ name: '', weekNumber: '', assignmentId: '', materialType: 'lecture' });
   const fileRef = useRef();
 
   useEffect(() => {
@@ -48,6 +48,7 @@ export default function MaterialsTab({ course, password }) {
       fd.append('name', uploadForm.name || file.name.replace(/\.[^.]+$/, ''));
       if (uploadForm.weekNumber) fd.append('weekNumber', uploadForm.weekNumber);
       if (uploadForm.assignmentId) fd.append('assignmentId', uploadForm.assignmentId);
+      fd.append('materialType', uploadForm.materialType || 'lecture');
       try {
         const r = await fetch(`${BASE}/api/materials/upload`, {
           method: 'POST', headers: h(password), body: fd
@@ -56,7 +57,7 @@ export default function MaterialsTab({ course, password }) {
         setMaterials(m => [mat, ...m.filter(x => x.id !== mat.id)]);
       } catch (e) { console.error(e); }
     }
-    setUploadForm({ name: '', weekNumber: '', assignmentId: '' });
+    setUploadForm({ name: '', weekNumber: '', assignmentId: '', materialType: 'lecture' });
     setUploading(false);
   }
 
@@ -108,12 +109,39 @@ export default function MaterialsTab({ course, password }) {
         onChange={e => handleUpload(e.target.files)} />
 
       {/* Upload options */}
-      <div className="card" style={{ marginBottom: 14 }}>
-        <div style={{ fontWeight: 500, marginBottom: 10, fontSize: 13 }}>Upload settings (optional)</div>
+      <div className="card" style={{ marginBottom: 14, borderColor: uploadForm.materialType === 'lecture' ? 'var(--accent)' : 'var(--border)', borderWidth: uploadForm.materialType === 'lecture' ? 2 : 1 }}>
+        <div style={{ fontWeight: 600, marginBottom: 12, fontSize: 13 }}>Upload settings</div>
+
+        {/* Material type — most important choice */}
+        <div className="field">
+          <label>Type</label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {[
+              ['lecture', '🎓 Lecture', 'Students graded against this — concepts should appear in their work'],
+              ['reference', '📚 Reference', 'Background material, not directly assessed'],
+              ['example', '✨ Example', 'Good example for students to study']
+            ].map(([val, label, desc]) => (
+              <div key={val} onClick={() => setUploadForm(f => ({ ...f, materialType: val }))}
+                style={{ flex: 1, padding: '8px 10px', borderRadius: 6, cursor: 'pointer',
+                  border: `2px solid ${uploadForm.materialType === val ? 'var(--accent)' : 'var(--border)'}`,
+                  background: uploadForm.materialType === val ? 'rgba(37,99,235,0.05)' : 'var(--bg)' }}>
+                <div style={{ fontWeight: 600, fontSize: 12, color: uploadForm.materialType === val ? 'var(--accent)' : 'var(--text)' }}>{label}</div>
+                <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2, lineHeight: 1.4 }}>{desc}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {uploadForm.materialType === 'lecture' && (
+          <div style={{ padding: '8px 10px', background: 'rgba(37,99,235,0.06)', border: '1px solid rgba(37,99,235,0.2)', borderRadius: 6, fontSize: 12, color: 'var(--accent)', marginBottom: 10 }}>
+            Lecture materials are pulled into the grading prompt. Students will be evaluated on whether they demonstrate understanding of concepts covered.
+          </div>
+        )}
+
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 1fr', gap: 8 }}>
           <div className="field" style={{ margin: 0 }}>
-            <label>Name override</label>
-            <input type="text" value={uploadForm.name} onChange={e => setUploadForm(f => ({ ...f, name: e.target.value }))} placeholder="Leave blank to use filename" />
+            <label>Name (leave blank to use filename)</label>
+            <input type="text" value={uploadForm.name} onChange={e => setUploadForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Module 2 Lecture" />
           </div>
           <div className="field" style={{ margin: 0 }}>
             <label>Week</label>

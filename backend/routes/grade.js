@@ -19,7 +19,20 @@ function buildGradePrompt(assignment, course, examples, materials) {
     ? examples.map(e => `EXAMPLE — ${e.student_name} (${e.score}/${assignment.max_score}${e.quality==='weak'?' WEAK':' GOOD'}):\nNotes: ${e.notes || ''}\n${e.content || ''}`).join('\n\n---\n\n')
     : 'No calibration examples yet.';
   const matStr = materials.length
-    ? `\nRELEVANT COURSE MATERIALS (what was taught this week):\n${materials.map(m=>`[${m.name}]:\n${(m.extracted_text||'').slice(0,2000)}`).join('\n\n')}`
+    ? `
+LECTURE AND COURSE MATERIALS (what was taught this week/module):
+${materials.map(m => `[${m.name}${m.week_number ? ' — Week ' + m.week_number : ''}]:
+${(m.extracted_text||'').slice(0,2000)}`).join('\n\n')}
+
+LECTURE CONCEPT EVALUATION RULES:
+- Students are expected to apply concepts from these lectures in their work
+- Do NOT penalize students for not parroting lecture language verbatim
+- DO evaluate whether the student demonstrates understanding of the concepts taught
+- If a student misses a key concept covered in the lecture that is directly relevant to what they are analyzing, note it as a gap
+- If a student correctly applies a lecture concept without explicitly citing it, that is positive
+- Example: if the lecture covered how to distinguish observation from inference, and the student conflates the two, that is a deduction
+- Flag: "Concept from [material name] not applied: [specific concept]"
+`
     : '';
 
   return `You are an expert instructor grading ${assignment.name} for ${course.full_name} (${course.name}) at ${course.institution}.
@@ -189,11 +202,16 @@ async function gradeOne(filePath, assignment, course) {
   const base64 = fs.readFileSync(filePath).toString('base64');
 
   const examples = db.prepare('SELECT * FROM examples WHERE assignment_id=?').all(assignment.id);
+  // Pull lecture materials first, then other materials
+  // Lecture = directly assessed. Reference/example = context only.
   const materials = db.prepare(`
     SELECT * FROM materials
     WHERE course_id=? AND status='active'
     AND (assignment_id=? OR assignment_id IS NULL)
-    ORDER BY week_number ASC
+    ORDER BY
+      CASE WHEN material_type='lecture' THEN 0 ELSE 1 END,
+      week_number ASC
+    LIMIT 5
   `).all(course.id, assignment.id);
 
   const resp = await client.messages.create({
