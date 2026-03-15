@@ -296,6 +296,7 @@ router.post('/batch', upload.array('files', 50), async (req, res) => {
       const grade = parseGrade(db.prepare('SELECT * FROM grades WHERE id=?').get(gradeId));
       res.write(`data: ${JSON.stringify({ type:'result', file:originalName, index:i, total:files.length, grade, hasAlwaysOn:!!alwaysOn, status:'done' })}\n\n`);
     } catch (err) {
+      console.error(`Grade error [${originalName}]:`, err.message);
       res.write(`data: ${JSON.stringify({ type:'error', file:originalName, index:i, total:files.length, error:err.message, status:'error' })}\n\n`);
     }
     try { fs.unlinkSync(file.path); } catch (e) {}

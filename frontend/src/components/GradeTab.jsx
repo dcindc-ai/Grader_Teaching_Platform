@@ -63,7 +63,8 @@ export default function GradeTab({ course, password, activeAssignmentId, queue, 
     try {
       await gradeBatch(pending.map(x => x.file), selectedId, course.id, password, (evt) => {
         if (evt.type === 'result' || evt.type === 'error') {
-          onQueue(q => q.map(i => i.name === evt.file ? { ...i, status: evt.type === 'result' ? 'done' : 'error' } : i));
+          console.log('Grade event:', evt);
+          onQueue(q => q.map(i => i.name === evt.file ? { ...i, status: evt.type === 'result' ? 'done' : 'error', errorMsg: evt.error || null } : i));
           setProgress(p => ({ ...p, done: evt.index + 1 }));
           if (evt.grade) onResults(r => [evt.grade, ...r]);
         }
