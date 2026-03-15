@@ -85,6 +85,8 @@ export default function LabelTab({ course, password, queue: externalQueue, onQue
         name: file.name,
         studentName: parsed.studentName || file.name.replace('.pdf', ''),
         extractedComments: parsed.comments || '',
+        visualDescription: parsed.visualDescription || '',
+        rubricObservations: parsed.rubricObservations || {},
         additionalContext: '',
         score: '4',
         quality: 'good',
@@ -116,8 +118,11 @@ export default function LabelTab({ course, password, queue: externalQueue, onQue
     if (!item || !assignmentId) return;
     setSaving(true);
     const content = [
-      item.extractedComments,
-      item.additionalContext ? `\nAdditional context:\n${item.additionalContext}` : ''
+      item.extractedComments ? `INSTRUCTOR COMMENTS:\n${item.extractedComments}` : '',
+      item.visualDescription ? `\nVISUAL PRODUCT DESCRIPTION:\n${item.visualDescription}` : '',
+      item.rubricObservations && Object.keys(item.rubricObservations).length ? 
+        `\nRUBRIC OBSERVATIONS:\n${Object.entries(item.rubricObservations).map(([k,v]) => `${k}: ${v}`).join('\n')}` : '',
+      item.additionalContext ? `\nADDITIONAL INSTRUCTOR NOTES:\n${item.additionalContext}` : ''
     ].filter(Boolean).join('\n');
 
     try {

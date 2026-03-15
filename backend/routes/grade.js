@@ -16,7 +16,7 @@ function buildGradePrompt(assignment, course, examples, materials) {
   const sliders = JSON.parse(course.sliders || '{}');
   const sliderStr = DIMS.map(d => `${d}: ${sliders[d]||3}/5`).join(', ');
   const exStr = examples.length
-    ? examples.map(e => `EXAMPLE — ${e.student_name} (${e.score}/${assignment.max_score}${e.quality==='weak'?' WEAK':' GOOD'}):\nNotes: ${e.notes}\n${e.content}`).join('\n\n---\n\n')
+    ? examples.map(e => `EXAMPLE — ${e.student_name} (${e.score}/${assignment.max_score}${e.quality==='weak'?' WEAK':' GOOD'}):\nNotes: ${e.notes || ''}\n${e.content || ''}`).join('\n\n---\n\n')
     : 'No calibration examples yet.';
   const matStr = materials.length
     ? `\nRELEVANT COURSE MATERIALS (what was taught this week):\n${materials.map(m=>`[${m.name}]:\n${(m.extracted_text||'').slice(0,2000)}`).join('\n\n')}`
@@ -35,14 +35,17 @@ ${matStr}
 
 GRADING PRINCIPLES:
 1. BLUF REQUIRED: First sentence must lead with significance. Flag if buried.
-2. LEGEND REQUIRED on annotated products. Missing = deduction.
-3. SIGNIFICANCE must be STATED explicitly, never implied.
-4. QUANTIFICATION: Flag vague terms. Demand estimates and numbers.
-5. NO FIRST PERSON: Flag any "I," "we," "my."
-6. OBSERVATION vs INFERENCE: Distinguish what is visible from what is inferred.
-7. CONTEXT SOURCES: Wikipedia-only is insufficient.
-8. REWRITE SUGGESTIONS: For every flagged narrative sentence, provide a concrete rewrite.
-9. If course materials are provided above, note whether the student applied concepts from the lesson.
+2. LEGEND REQUIRED on annotated products. Missing = automatic deduction. No legend = cannot be full marks.
+3. NORTH ARROW / DIRECTION INDICATOR required. Missing = deduction.
+4. COLORBLIND ACCESSIBILITY: Red/green pairs are problematic for ~8% of males. Flag if used.
+5. SIGNIFICANCE must be STATED explicitly, never implied.
+6. QUANTIFICATION: Flag vague terms. Demand estimates and numbers.
+7. NO FIRST PERSON: Flag any "I," "we," "my."
+8. OBSERVATION vs INFERENCE: Distinguish what is visible from what is inferred.
+9. CONTEXT SOURCES: Wikipedia-only is insufficient.
+10. REWRITE SUGGESTIONS: For every flagged narrative sentence, provide a concrete rewrite.
+11. VISUAL PRODUCT: If calibration examples include visual descriptions, use them to calibrate what constitutes a good annotated product for this assignment.
+12. If course materials are provided above, note whether the student applied concepts from the lesson.
 
 CALIBRATION EXAMPLES:
 ${exStr}

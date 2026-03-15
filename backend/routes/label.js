@@ -22,17 +22,30 @@ router.post('/parse', upload.single('file'), async (req, res) => {
         role: 'user',
         content: [
           { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } },
-          { type: 'text', text: `This is a student lab submission or a Canvas "Summary of Comments" export from a graded student lab.
+          { type: 'text', text: `This document contains a student GEOG/intelligence lab submission. It typically has two parts:
+1. The student's annotated map or imagery product (page 1) — a visual product with annotations, symbols, labels
+2. A Summary of Comments from the instructor (later pages) — numbered comments the instructor left
 
-Extract the following and return ONLY valid JSON, no markdown fences:
+Extract ALL of the following and return ONLY valid JSON, no markdown fences:
 {
-  "studentName": "student last name or full name found in the document header or filename",
-  "comments": "all instructor comments found in this document, formatted as a readable list. Include the comment text and any page/location info. If this is a Summary of Comments export, list each numbered comment on its own line.",
+  "studentName": "student last name or full name found in the document or filename",
+  "comments": "all instructor comments verbatim, one per line with comment number. e.g. '1. Nice context map.\n2. Would recommend an arrow.'",
+  "visualDescription": "detailed description of what you see in the annotated product image. Specifically note: (1) is there a legend box? what does it explain? (2) what colors and symbols are used — are they colorblind accessible? (3) is there a north arrow or direction indicator? (4) is there a neatline/border? (5) what are the floating labels or annotations on the image? (6) what is the main subject of the image? (7) are there any context maps or inset maps? Be specific and concrete.",
+  "rubricObservations": {
+    "hasLegend": true or false,
+    "hasNorthArrow": true or false,
+    "hasNeatline": true or false,
+    "colorblindConcerns": "describe any red/green or problematic color combinations",
+    "blufPresent": "does the narrative start with a significance statement or does it bury the lead",
+    "quantification": "does the student use specific numbers and measurements or vague language",
+    "firstPersonUsed": true or false,
+    "citationQuality": "describe the sources cited"
+  },
   "pageCount": 2
 }
 
 If you cannot find a student name, use "Unknown".
-If there are no comments, return an empty string for comments.` }
+If there is no visual product, leave visualDescription as empty string.` }
         ]
       }]
     });
