@@ -218,7 +218,19 @@ export default function GradeTab({ course, password, activeAssignmentId, queue, 
                   → {g.key_improvement}
                 </div>
               )}
-              <div style={{ fontSize: 11, color: 'var(--accent)', marginTop: 4 }}>Click to review and copy feedback →</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                <span style={{ fontSize: 11, color: 'var(--accent)' }}>Click to review and copy feedback →</span>
+                <button className="danger" style={{ fontSize: 11, padding: '1px 8px' }}
+                  onClick={async e => {
+                    e.stopPropagation();
+                    if (!confirm(`Delete grade for ${g.studentName || 'this student'}?`)) return;
+                    await deleteGrade(g.id, password);
+                    onResults(r => r.filter(x => x.id !== g.id));
+                    setDbGrades(dg => dg.filter(x => x.id !== g.id));
+                  }}>
+                  Delete
+                </button>
+              </div>
             </div>
           ))}
         </div>

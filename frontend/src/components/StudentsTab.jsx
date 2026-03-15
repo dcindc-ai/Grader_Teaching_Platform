@@ -147,6 +147,15 @@ export default function StudentsTab({ course, password }) {
                       <span style={{ fontSize: 12, color: 'var(--text3)' }}>No grades</span>
                     )}
                     <span style={{ fontSize: 12, color: 'var(--accent)' }}>View →</span>
+                    <button className="danger" style={{ fontSize: 11, padding: '2px 8px' }}
+                      onClick={async e => {
+                        e.stopPropagation();
+                        if (!confirm(`Remove ${s.name} from the roster? This will not delete their grades.`)) return;
+                        await fetch(`${BASE}/api/students/${s.id}`, { method: 'DELETE', headers: h(password) });
+                        loadStudents();
+                      }}>
+                      Remove
+                    </button>
                   </div>
                 </div>
               </div>
@@ -166,7 +175,8 @@ function StudentDetail({ student, course, password, onBack }) {
 
   return (
     <div>
-      <button className="ghost" style={{ fontSize: 12, marginBottom: 14 }} onClick={onBack}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+        <button className="ghost" style={{ fontSize: 12 }} onClick={onBack}>
         ← All students
       </button>
 
