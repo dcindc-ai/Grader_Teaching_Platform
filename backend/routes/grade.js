@@ -53,31 +53,53 @@ function matchStudentRecord(db, courseId, studentName, filename) {
   const students = db.prepare('SELECT * FROM students WHERE course_id=?').all(courseId);
   if (!students.length) return null;
 
-  // Try exact name match first
+  // Try exact full name match first
   if (studentName && studentName !== 'Unknown') {
-    const exact = students.find(s => 
+    const exact = students.find(s =>
       (s.name || '').toLowerCase() === studentName.toLowerCase()
     );
     if (exact) return exact;
-    
-    // Try last name match
-    const nameParts = studentName.toLowerCase().split(' ');
-    const lastName = nameParts[nameParts.length - 1];
-    const byLast = students.find(s => 
-      (s.last_name || '').toLowerCase() === lastName ||
-      (s.name || '').toLowerCase().endsWith(' ' + lastName)
-    );
-    if (byLast) return byLast;
   }
 
-  // Try filename parsing
+  // Parse filename for last name + first name/initial
   const parsed = parseNameFromFilename(filename || '');
+
+  // Match on last name + first initial together (handles duplicate last names)
+  if (parsed?.lastName && parsed?.firstName) {
+    const lastLower = parsed.lastName.toLowerCase();
+    const firstInitial = parsed.firstName[0].toLowerCase();
+    const byBoth = students.find(s => {
+      const sLast = (s.last_name || s.name?.split(' ').pop() || '').toLowerCase();
+      const sFirst = (s.first_name || s.name?.split(' ')[0] || '').toLowerCase();
+      return sLast === lastLower && sFirst.startsWith(firstInitial);
+    });
+    if (byBoth) return byBoth;
+  }
+
+  // Fall back to last name only if no duplicates exist
   if (parsed?.lastName) {
-    const byFileLast = students.find(s =>
-      (s.last_name || '').toLowerCase() === parsed.lastName.toLowerCase() ||
-      (s.name || '').toLowerCase().endsWith(' ' + parsed.lastName.toLowerCase())
-    );
-    if (byFileLast) return byFileLast;
+    const lastLower = parsed.lastName.toLowerCase();
+    const matches = students.filter(s => {
+      const sLast = (s.last_name || s.name?.split(' ').pop() || '').toLowerCase();
+      return sLast === lastLower;
+    });
+    if (matches.length === 1) return matches[0]; // only match if unambiguous
+    if (matches.length > 1) {
+      console.warn(`Ambiguous last name "${parsed.lastName}" matches ${matches.length} students — need first name to disambiguate`);
+    }
+  }
+
+  // Try Claude-extracted name last name
+  if (studentName && studentName !== 'Unknown') {
+    const nameParts = studentName.toLowerCase().split(' ');
+    const lastName = nameParts[nameParts.length - 1];
+    const firstName = nameParts[0];
+    const byBoth = students.find(s => {
+      const sLast = (s.last_name || '').toLowerCase();
+      const sFirst = (s.first_name || '').toLowerCase();
+      return sLast === lastName && sFirst.startsWith(firstName[0]);
+    });
+    if (byBoth) return byBoth;
   }
 
   return null;
