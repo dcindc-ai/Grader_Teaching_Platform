@@ -7,28 +7,44 @@ const { db, parseGrade, firstName } = require('../db');
 
 const router = express.Router();
 
-// Parse student name from Canvas filename format:
-// "Lastname_Firstname_assignmentname_12345_submission.pdf"
-// or "Lastname_lab1.pdf" or "Lastname_Firstname_lab1.pdf"
+// Parse student name from Canvas bulk download filename format:
+// "lastnamefirstname_studentid_submissionid_Lastname_AssignmentName.pdf"
+// e.g. shifflettzachary_4708881_88622010_Shifflett_Lab1.pdf
+// The 4th segment (index 3) is always the clean last name
 function parseNameFromFilename(filename) {
-  const base = filename.replace(/\.[^.]+$/, '').replace(/_submission$/, '');
+  const base = filename.replace(/\.[^.]+$/, '').replace(/_submission$/i, '');
   const parts = base.split('_').filter(Boolean);
   if (!parts.length) return null;
 
-  // Canvas format: first part is last name, second is first name (if it looks like a name)
+  // Canvas bulk download: check if parts[1] and parts[2] are numeric IDs
+  // format: lastnamefirstname_NNNNNN_NNNNNN_Lastname_Assignment
+  if (parts.length >= 4 && /^\d+$/.test(parts[1]) && /^\d+$/.test(parts[2])) {
+    // parts[3] is the clean last name
+    const lastName = parts[3];
+    // Try to extract first name by removing last name from the concatenated parts[0]
+    const combined = parts[0].toLowerCase();
+    const lastLower = lastName.toLowerCase();
+    let firstName = '';
+    if (combined.startsWith(lastLower)) {
+      // e.g. "shifflettzachary" starts with "shifflett" -> first = "zachary"
+      firstName = combined.slice(lastLower.length);
+      firstName = firstName.charAt(0).toUpperCase() + firstName.slice(1);
+    }
+    const fullName = firstName ? `${firstName} ${lastName}` : lastName;
+    return { firstName, lastName, fullName };
+  }
+
+  // Fallback: simple Lastname_Assignment.pdf format
   const lastName = parts[0];
   const secondPart = parts[1] || '';
-  
-  // If second part looks like a name (not a number, not "lab", "assignment", etc.)
-  const looksLikeName = secondPart && 
-    !/^\d+$/.test(secondPart) && 
+  const looksLikeName = secondPart &&
+    !/^\d+$/.test(secondPart) &&
     !/^(lab|assignment|hw|quiz|discussion|submission|attempt)/i.test(secondPart) &&
     secondPart.length > 1;
 
   if (looksLikeName) {
     return { firstName: secondPart, lastName, fullName: `${secondPart} ${lastName}` };
   }
-  // Just last name
   return { firstName: '', lastName, fullName: lastName };
 }
 
