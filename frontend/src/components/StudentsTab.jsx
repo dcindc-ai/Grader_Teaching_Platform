@@ -286,12 +286,18 @@ function StudentRecord({ student: initialStudent, course, password, onBack }) {
   const [form, setForm] = useState({ ...initialStudent });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [generatingInsight, setGeneratingInsight] = useState(false);
 
   const grades = student.grades || [];
-  const avg = grades.length
-    ? (grades.reduce((a, g) => a + parseFloat(g.total||0)/parseFloat(g.maxScore||1), 0) / grades.length * 100).toFixed(0)
-    : null;
+  const avg = student.averageScore ? parseInt(student.averageScore) : null;
   const avgColor = avg >= 85 ? 'var(--green)' : avg >= 70 ? 'var(--amber)' : avg !== null ? 'var(--red)' : 'var(--text3)';
+
+  const spi = student.spi;
+  const spiColor = spi >= 75 ? 'var(--green)' : spi >= 60 ? 'var(--amber)' : spi !== null ? 'var(--red)' : 'var(--text3)';
+  const spiLabel = spi >= 75 ? 'On track' : spi >= 60 ? 'Needs attention' : spi !== null ? 'At risk' : '';
+
+  const trajColor = student.trajectory === 'improving' ? 'var(--green)' : student.trajectory === 'declining' ? 'var(--red)' : 'var(--text3)';
+  const trajIcon = student.trajectory === 'improving' ? '↑' : student.trajectory === 'declining' ? '↓' : '→';
 
   async function saveRecord() {
     setSaving(true);
@@ -302,17 +308,33 @@ function StudentRecord({ student: initialStudent, course, password, onBack }) {
         body: JSON.stringify(form)
       });
       const updated = await r.json();
-      setStudent({ ...student, ...updated });
-      setSaved(true);
-      setEditing(false);
+      setStudent(s => ({ ...s, ...updated }));
+      setSaved(true); setEditing(false);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) { alert(e.message); }
     setSaving(false);
   }
 
+  async function generateInsight() {
+    setGeneratingInsight(true);
+    try {
+      const r = await fetch(`${BASE}/api/students/${student.id}/insight`, {
+        method: 'POST',
+        headers: { 'x-admin-password': password, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ courseId: course.id })
+      });
+      const d = await r.json();
+      if (d.insight) setStudent(s => ({ ...s, notes: d.insight + (s.notes ? '
+
+---
+' + s.notes : '') }));
+    } catch (e) { alert(e.message); }
+    setGeneratingInsight(false);
+  }
+
   return (
     <div style={{ maxWidth: 720 }}>
-      {/* Back + actions */}
+      {/* Nav */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <button className="ghost" style={{ fontSize: 12 }} onClick={onBack}>← All students</button>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -329,111 +351,164 @@ function StudentRecord({ student: initialStudent, course, password, onBack }) {
         </div>
       </div>
 
-      {/* Header */}
+      {/* Header card */}
       <div className="card" style={{ marginBottom: 14 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div>
-            {editing ? (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-                <div className="field" style={{ margin: 0 }}>
-                  <label>First name</label>
-                  <input type="text" value={form.firstName || ''} onChange={e => setForm(f => ({...f, firstName: e.target.value}))} />
-                </div>
-                <div className="field" style={{ margin: 0 }}>
-                  <label>Last name</label>
-                  <input type="text" value={form.lastName || ''} onChange={e => setForm(f => ({...f, lastName: e.target.value}))} />
-                </div>
-                <div className="field" style={{ margin: 0 }}>
-                  <label>Preferred name</label>
-                  <input type="text" value={form.preferredName || ''} onChange={e => setForm(f => ({...f, preferredName: e.target.value}))}
-                    placeholder="What they go by" />
-                </div>
-                <div className="field" style={{ margin: 0 }}>
-                  <label>Nickname</label>
-                  <input type="text" value={form.nickname || ''} onChange={e => setForm(f => ({...f, nickname: e.target.value}))}
-                    placeholder="e.g. Chris, Lizzy" />
-                </div>
-                <div className="field" style={{ margin: 0, gridColumn: '1 / -1' }}>
-                  <label>Email</label>
-                  <input type="email" value={form.email || ''} onChange={e => setForm(f => ({...f, email: e.target.value}))} />
-                </div>
+        {editing ? (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+            {[['First name','firstName'],['Last name','lastName'],['Preferred name','preferredName'],['Nickname','nickname'],['Email','email']].map(([label, key]) => (
+              <div key={key} className="field" style={{ margin: 0, gridColumn: key === 'email' ? '1 / -1' : undefined }}>
+                <label>{label}</label>
+                <input type={key === 'email' ? 'email' : 'text'} value={form[key] || ''}
+                  onChange={e => setForm(f => ({...f, [key]: e.target.value}))} />
               </div>
-            ) : (
-              <>
-                <div style={{ fontSize: 22, fontWeight: 700 }}>
-                  {student.firstName} {student.lastName}
-                  {student.nickname && <span style={{ fontSize: 14, color: 'var(--text3)', marginLeft: 10 }}>"{student.nickname}"</span>}
-                </div>
-                {student.preferredName && student.preferredName !== student.firstName && (
-                  <div style={{ fontSize: 13, color: 'var(--text2)', marginTop: 2 }}>Goes by: {student.preferredName}</div>
-                )}
-                <div style={{ fontSize: 13, color: 'var(--text3)', marginTop: 4 }}>{student.email}</div>
-              </>
-            )}
+            ))}
           </div>
-          {avg !== null && (
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontFamily: 'var(--mono)', fontSize: 32, fontWeight: 700, color: avgColor }}>{avg}%</div>
-              <div style={{ fontSize: 12, color: 'var(--text2)' }}>{grades.length} assignment{grades.length !== 1 ? 's' : ''}</div>
-            </div>
-          )}
-        </div>
-
-        {/* Notes */}
-        <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
-          <label>Notes about this student</label>
-          {editing ? (
-            <textarea rows={3} value={form.notes || ''} onChange={e => setForm(f => ({...f, notes: e.target.value}))}
-              placeholder="Anything worth remembering — participation, context, circumstances, strengths…"
-              style={{ fontSize: 13, lineHeight: 1.6 }} />
-          ) : (
-            student.notes ? (
-              <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{student.notes}</div>
-            ) : (
-              <div style={{ fontSize: 13, color: 'var(--text3)', fontStyle: 'italic' }}>
-                No notes yet. Click Edit record to add notes.
+        ) : (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+            <div>
+              <div style={{ fontSize: 22, fontWeight: 700 }}>
+                {student.firstName} {student.lastName}
+                {student.nickname && <span style={{ fontSize: 13, color: 'var(--text3)', marginLeft: 8 }}>"{student.nickname}"</span>}
               </div>
-            )
+              {student.preferredName && student.preferredName !== student.firstName && (
+                <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>Goes by: {student.preferredName}</div>
+              )}
+              <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>{student.email}</div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              {avg !== null && (
+                <div style={{ fontFamily: 'var(--mono)', fontSize: 30, fontWeight: 700, color: avgColor }}>{avg}%</div>
+              )}
+              <div style={{ fontSize: 11, color: 'var(--text3)' }}>{grades.length} assignment{grades.length !== 1 ? 's' : ''}</div>
+            </div>
+          </div>
+        )}
+
+        {/* SPI Dashboard */}
+        {grades.length > 0 && (
+          <div style={{ padding: '12px 14px', background: 'var(--bg2)', borderRadius: 8, marginBottom: 12 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text3)', marginBottom: 10 }}>
+              Student Progress Index
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 8 }}>
+              {/* SPI composite */}
+              <div style={{ padding: '10px', background: '#fff', borderRadius: 8, border: `2px solid ${spiColor}`, textAlign: 'center', gridColumn: '1' }}>
+                <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 4 }}>SPI</div>
+                <div style={{ fontFamily: 'var(--mono)', fontSize: 26, fontWeight: 700, color: spiColor }}>{spi ?? '—'}</div>
+                <div style={{ fontSize: 10, color: spiColor, fontWeight: 600 }}>{spiLabel}</div>
+              </div>
+              {/* Weighted grade */}
+              <div style={{ padding: '10px', background: '#fff', borderRadius: 8, border: '1px solid var(--border)', textAlign: 'center' }}>
+                <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 4 }}>Avg grade</div>
+                <div style={{ fontFamily: 'var(--mono)', fontSize: 22, fontWeight: 700, color: avgColor }}>{avg ?? '—'}%</div>
+                <div style={{ fontSize: 10, color: 'var(--text3)' }}>50% weight</div>
+              </div>
+              {/* Trajectory */}
+              <div style={{ padding: '10px', background: '#fff', borderRadius: 8, border: '1px solid var(--border)', textAlign: 'center' }}>
+                <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 4 }}>Trajectory</div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: trajColor }}>{trajIcon}</div>
+                <div style={{ fontSize: 10, color: trajColor, fontWeight: 600 }}>{student.trajectory || 'n/a'}</div>
+                <div style={{ fontSize: 9, color: 'var(--text3)' }}>30% weight</div>
+              </div>
+              {/* Concept application */}
+              <div style={{ padding: '10px', background: '#fff', borderRadius: 8, border: '1px solid var(--border)', textAlign: 'center' }}>
+                <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 4 }}>Concept rate</div>
+                <div style={{ fontFamily: 'var(--mono)', fontSize: 22, fontWeight: 700,
+                  color: (student.conceptApplicationRate||0) >= 80 ? 'var(--green)' : (student.conceptApplicationRate||0) >= 65 ? 'var(--amber)' : 'var(--red)' }}>
+                  {student.conceptApplicationRate ?? '—'}{student.conceptApplicationRate != null ? '%' : ''}
+                </div>
+                <div style={{ fontSize: 9, color: 'var(--text3)' }}>20% weight</div>
+              </div>
+            </div>
+
+            {/* SPI explanation */}
+            <div style={{ marginTop: 10, fontSize: 11, color: 'var(--text3)', lineHeight: 1.6 }}>
+              SPI combines weighted grade (50%), trajectory direction (30%), and concept application rate (20%).
+              {spi >= 75 && ' This student is on track.'}
+              {spi >= 60 && spi < 75 && ' Watch this student — consistent improvement needed.'}
+              {spi !== null && spi < 60 && ' Consider reaching out. Pattern suggests intervention may help.'}
+            </div>
+          </div>
+        )}
+
+        {/* Notes + AI insight */}
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <label style={{ margin: 0 }}>Instructor notes</label>
+            <button style={{ fontSize: 11, padding: '2px 8px' }}
+              onClick={generateInsight} disabled={generatingInsight || grades.length === 0}>
+              {generatingInsight ? 'Generating…' : '✦ Generate AI insight'}
+            </button>
+          </div>
+          {editing ? (
+            <textarea rows={4} value={form.notes || ''}
+              onChange={e => setForm(f => ({...f, notes: e.target.value}))}
+              placeholder="Anything worth remembering about this student…"
+              style={{ fontSize: 13, lineHeight: 1.6 }} />
+          ) : student.notes ? (
+            <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.7, whiteSpace: 'pre-wrap',
+              padding: '10px 12px', background: 'var(--bg2)', borderRadius: 6 }}>
+              {student.notes}
+            </div>
+          ) : (
+            <div style={{ fontSize: 13, color: 'var(--text3)', fontStyle: 'italic' }}>
+              No notes yet. Click Edit record to add notes, or Generate AI insight to create one from grades.
+            </div>
           )}
         </div>
       </div>
 
       {/* Grade history */}
       <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 10 }}>
-        Grade History
-        {grades.length > 0 && <span className="badge" style={{ marginLeft: 8 }}>{grades.length}</span>}
+        Grade History {grades.length > 0 && <span className="badge" style={{ marginLeft: 8 }}>{grades.length}</span>}
       </div>
 
       {grades.length === 0 ? (
         <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>
           No grades yet for {student.firstName}.
         </div>
-      ) : (
-        grades.map((g, i) => {
-          const pct = parseFloat(g.total) / parseFloat(g.maxScore);
-          const color = pct >= 0.85 ? 'var(--green)' : pct >= 0.7 ? 'var(--amber)' : 'var(--red)';
-          return (
-            <div key={i} className="card" style={{ marginBottom: 8, padding: '12px 14px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: g.key_improvement ? 6 : 0 }}>
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: 14 }}>{g.assignmentName}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text3)' }}>
-                    {new Date(g.gradedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                  </div>
+      ) : grades.map((g, i) => {
+        const pct = parseFloat(g.total) / parseFloat(g.maxScore);
+        const color = pct >= 0.85 ? 'var(--green)' : pct >= 0.7 ? 'var(--amber)' : 'var(--red)';
+        const scores = g.scores || {};
+        return (
+          <div key={i} className="card" style={{ marginBottom: 8, padding: '12px 14px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>{g.assignmentName}</div>
+                <div style={{ fontSize: 11, color: 'var(--text3)' }}>
+                  {new Date(g.gradedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </div>
-                <span style={{ fontFamily: 'var(--mono)', fontSize: 22, fontWeight: 700, color }}>
-                  {g.total}<span style={{ fontSize: 13, fontWeight: 400, color: 'var(--text2)' }}>/{g.maxScore}</span>
-                </span>
               </div>
-              {g.key_improvement && (
-                <div style={{ fontSize: 12, color: 'var(--text2)', padding: '5px 8px', background: 'var(--bg2)', borderRadius: 5, borderLeft: '3px solid var(--amber)' }}>
-                  → {g.key_improvement}
-                </div>
-              )}
+              <span style={{ fontFamily: 'var(--mono)', fontSize: 22, fontWeight: 700, color }}>
+                {g.total}<span style={{ fontSize: 13, fontWeight: 400, color: 'var(--text2)' }}>/{g.maxScore}</span>
+              </span>
             </div>
-          );
-        })
-      )}
+            {/* Per-criterion mini bars */}
+            {Object.keys(scores).filter(k => k !== 'total').length > 0 && (
+              <div style={{ display: 'flex', gap: 4, marginBottom: 6, flexWrap: 'wrap' }}>
+                {Object.entries(scores).filter(([k]) => k !== 'total').map(([k, v]) => {
+                  const sMax = 2; // default section max
+                  const sp = parseFloat(v) / sMax;
+                  const sc = sp >= 0.85 ? 'var(--green)' : sp >= 0.6 ? 'var(--amber)' : 'var(--red)';
+                  return (
+                    <div key={k} style={{ fontSize: 10, padding: '2px 7px', borderRadius: 4,
+                      background: `${sc}18`, color: sc, border: `1px solid ${sc}40`, fontWeight: 600 }}>
+                      {k.replace(/_/g,' ')}: {v}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {g.key_improvement && (
+              <div style={{ fontSize: 12, color: 'var(--text2)', padding: '5px 8px',
+                background: 'var(--bg2)', borderRadius: 5, borderLeft: '3px solid var(--amber)' }}>
+                → {g.key_improvement}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

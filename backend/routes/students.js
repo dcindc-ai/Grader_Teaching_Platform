@@ -142,14 +142,60 @@ router.get('/progress/:courseId', (req, res) => {
     const avg = grades.length
       ? (grades.reduce((a, g) => a + (parseFloat(g.total)||0) / (parseFloat(g.max_score)||1), 0) / grades.length * 100).toFixed(0)
       : null;
+    // Trajectory: compare last two assignments
+    let trajectoryScore = 50; // neutral baseline
+    let trajectoryLabel = 'stable';
+    if (grades.length >= 2) {
+      const recent = parseFloat(grades[0].total) / parseFloat(grades[0].max_score);
+      const prior = parseFloat(grades[1].total) / parseFloat(grades[1].max_score);
+      const delta = recent - prior;
+      if (delta > 0.08) { trajectoryScore = 80; trajectoryLabel = 'improving'; }
+      else if (delta < -0.08) { trajectoryScore = 20; trajectoryLabel = 'declining'; }
+      else { trajectoryScore = 50; trajectoryLabel = 'stable'; }
+    }
+
+    // Concept application rate: % of rubric criteria above 70% avg
+    let conceptRate = null;
+    if (grades.length > 0) {
+      const allScores = [];
+      for (const g of grades) {
+        const scores = JSON.parse(g.scores || '{}');
+        const maxScore = parseFloat(g.max_score) || 6;
+        for (const [key, val] of Object.entries(scores)) {
+          if (key === 'total') continue;
+          // Estimate section max from known patterns
+          const sectionMax = maxScore <= 6 ? 2 : maxScore / 4;
+          allScores.push((parseFloat(val)||0) / sectionMax);
+        }
+      }
+      const above70 = allScores.filter(s => s >= 0.7).length;
+      conceptRate = allScores.length ? Math.round(above70 / allScores.length * 100) : null;
+    }
+
+    // Weighted running grade (% of max)
+    const weightedGrade = avg ? parseFloat(avg) : null;
+
+    // Composite SPI
+    let spi = null;
+    if (weightedGrade !== null) {
+      const trajComponent = trajectoryScore;
+      const conceptComponent = conceptRate ?? 70;
+      spi = Math.round((weightedGrade * 0.5) + (trajComponent * 0.3) + (conceptComponent * 0.2));
+    }
+
     return {
       ...parseStudent(s),
       assignmentsGraded: grades.length,
       averageScore: avg,
+      trajectory: trajectoryLabel,
+      trajectoryScore,
+      conceptApplicationRate: conceptRate,
+      spi,
       grades: grades.map(g => ({
         id: g.id, assignmentName: g.assignment_name,
         total: g.total, maxScore: g.max_score,
-        gradedAt: g.graded_at, key_improvement: g.key_improvement
+        gradedAt: g.graded_at, key_improvement: g.key_improvement,
+        scores: JSON.parse(g.scores || '{}')
       }))
     };
   });
@@ -182,3 +228,57 @@ router.delete('/:id', (req, res) => {
 });
 
 module.exports = router;
+
+// POST /api/students/:id/insight — generate AI insight paragraph
+router.post('/:id/insight', async (req, res) => {
+  const { courseId } = req.body;
+  const student = db.prepare('SELECT * FROM students WHERE id=?').get(req.params.id);
+  if (!student) return res.status(404).json({ error: 'Student not found' });
+
+  const grades = db.prepare('SELECT * FROM grades WHERE student_id=? OR (course_id=? AND student_name LIKE ?) ORDER BY graded_at ASC')
+    .all(req.params.id, courseId, `%${student.first_name || student.name.split(' ')[0]}%`);
+
+  if (!grades.length) return res.json({ insight: 'No grades recorded yet for this student.' });
+
+  const Anthropic = require('@anthropic-ai/sdk');
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  const gradeContext = grades.map(g => {
+    const scores = JSON.parse(g.scores || '{}');
+    const scoreStr = Object.entries(scores)
+      .filter(([k]) => k !== 'total')
+      .map(([k, v]) => `${k.replace(/_/g,' ')}: ${v}`)
+      .join(', ');
+    return `${g.assignment_name}: ${g.total}/${g.max_score} (${scoreStr}). Key gap: ${g.key_improvement || 'none noted'}`;
+  }).join('\n');
+
+  try {
+    const resp = await client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 400,
+      system: `You are an instructor writing a private insight note about a student's progress. Be honest, specific, and useful. No sentence over 18 words. No em dashes. Plain direct prose.`,
+      messages: [{
+        role: 'user',
+        content: `Student: ${student.first_name || student.name}
+Grade history:
+${gradeContext}
+
+Write a 3-4 sentence instructor insight covering:
+1. What this student does consistently well
+2. What pattern their gaps follow (not just listing them)
+3. Whether they are on track, improving, or needs intervention
+4. One specific thing to watch for or act on
+
+Write in first person as the instructor. Be frank.`
+      }]
+    });
+
+    const insight = resp.content.find(b => b.type === 'text')?.text || '';
+    // Save to student record
+    db.prepare('UPDATE students SET notes=? WHERE id=?')
+      .run(insight + (student.notes ? '\n\n---\n' + student.notes : ''), req.params.id);
+    res.json({ insight });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
