@@ -20,6 +20,7 @@ function parseStudent(r) {
 }
 
 // GET students for a course
+
 router.get('/', (req, res) => {
   const { courseId } = req.query;
   const rows = courseId
@@ -28,7 +29,8 @@ router.get('/', (req, res) => {
   res.json(rows.map(parseStudent));
 });
 
-// POST /api/students/roster — upload CSV roster with progress via SSE
+
+
 router.post('/roster', (req, res) => {
   const { courseId, students } = req.body;
   if (!courseId || !Array.isArray(students)) {
@@ -97,36 +99,8 @@ router.post('/roster', (req, res) => {
   res.json({ added, skipped, matched, total: students.length });
 });
 
-function findStudentMatch(students, studentName, fileName) {
-  if (!students.length) return null;
-  const fileLastName = (fileName || '').split('_')[0].split('.')[0].toLowerCase();
 
-  if (studentName && studentName !== 'Unknown') {
-    const exact = students.find(s =>
-      (s.name || '').toLowerCase() === studentName.toLowerCase()
-    );
-    if (exact) return exact;
 
-    const nameParts = studentName.toLowerCase().split(' ');
-    const lastName = nameParts[nameParts.length - 1];
-    const byLast = students.find(s =>
-      (s.last_name || (s.name||'').split(' ').pop() || '').toLowerCase() === lastName
-    );
-    if (byLast) return byLast;
-  }
-
-  if (fileLastName) {
-    const byFile = students.find(s => {
-      const sLast = (s.last_name || (s.name||'').split(' ').pop() || '').toLowerCase();
-      return sLast === fileLastName;
-    });
-    if (byFile) return byFile;
-  }
-
-  return null;
-}
-
-// GET /api/students/match
 router.get('/match', (req, res) => {
   const { courseId, studentName, fileName } = req.query;
   const students = db.prepare('SELECT * FROM students WHERE course_id=?').all(courseId);
@@ -134,7 +108,8 @@ router.get('/match', (req, res) => {
   res.json({ match: match ? parseStudent(match) : null });
 });
 
-// GET /api/students/progress/:courseId
+
+
 router.get('/progress/:courseId', (req, res) => {
   const students = db.prepare('SELECT * FROM students WHERE course_id=? ORDER BY last_name ASC, first_name ASC').all(req.params.courseId);
   const progress = students.map(s => {
@@ -202,7 +177,8 @@ router.get('/progress/:courseId', (req, res) => {
   res.json(progress);
 });
 
-// POST single student
+
+
 router.post('/', (req, res) => {
   const { courseId, firstName, lastName, email, nickname, notes } = req.body;
   const id = uuidv4();
@@ -212,7 +188,8 @@ router.post('/', (req, res) => {
   res.json(parseStudent(db.prepare('SELECT * FROM students WHERE id=?').get(id)));
 });
 
-// PUT update student
+
+
 router.put('/:id', (req, res) => {
   const { firstName, lastName, email, nickname, notes, preferredName } = req.body;
   const fullName = `${firstName || ''} ${lastName || ''}`.trim();
@@ -221,13 +198,15 @@ router.put('/:id', (req, res) => {
   res.json(parseStudent(db.prepare('SELECT * FROM students WHERE id=?').get(req.params.id)));
 });
 
-// DELETE student
+
+
 router.delete('/:id', (req, res) => {
   db.prepare('DELETE FROM students WHERE id=?').run(req.params.id);
   res.json({ ok: true });
 });
 
-// POST /api/students/:id/insight — generate AI insight paragraph
+
+
 router.post('/:id/insight', async (req, res) => {
   const { courseId } = req.body;
   const student = db.prepare('SELECT * FROM students WHERE id=?').get(req.params.id);
@@ -280,5 +259,7 @@ Write in first person as the instructor. Be frank.`
     res.status(500).json({ error: e.message });
   }
 });
+
+
 
 module.exports = router;
