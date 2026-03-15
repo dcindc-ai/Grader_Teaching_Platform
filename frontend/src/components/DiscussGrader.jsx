@@ -36,10 +36,11 @@ export default function DiscussGrader({ course, password, assignments, question,
   // Response state
   const [response, setResponse] = useState('');
   const [regenerating, setRegenerating] = useState(false);
-  const [tone, setTone] = useState('warm');
-  const [sentences, setSentences] = useState(5);
-  const [wordsPerSentence, setWordsPerSentence] = useState(18);
-  const [structure, setStructure] = useState('organized');
+  const defaults = course.responseDefaults || {};
+  const [tone, setTone] = useState(defaults.tone || 'warm');
+  const [sentences, setSentences] = useState(defaults.sentences || 5);
+  const [wordsPerSentence, setWordsPerSentence] = useState(defaults.wordsPerSentence || 18);
+  const [structure, setStructure] = useState(defaults.structure || 'organized');
   const [refinement, setRefinement] = useState('');
 
   // UI state
@@ -125,7 +126,8 @@ export default function DiscussGrader({ course, password, assignments, question,
         body: JSON.stringify({
           courseId: course.id, question: question || selectedAssignment?.description || '',
           studentName, studentResponse: submission,
-          tone, sentenceCount: sentences, wordsPerSentence, structure
+          tone, sentenceCount: sentences, wordsPerSentence, structure,
+          voiceRules: course.responseDefaults?.voiceRules || ''
         })
       });
       const d2 = await resp2.json();
@@ -147,7 +149,8 @@ export default function DiscussGrader({ course, password, assignments, question,
           courseId: course.id, question: question || selectedAssignment?.description || '',
           studentName, studentResponse: submission,
           tone, sentenceCount: sentences, wordsPerSentence, structure,
-          refinement, previousResponse: response
+          refinement, previousResponse: response,
+          voiceRules: course.responseDefaults?.voiceRules || ''
         })
       });
       const d = await resp.json();

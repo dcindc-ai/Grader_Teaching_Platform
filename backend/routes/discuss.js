@@ -4,7 +4,7 @@ const { v4: uuidv4 } = require('uuid');
 const { db } = require('../db');
 const router = express.Router();
 
-function buildReplyPrompt({ course, question, tone, sentenceCount, wordsPerSentence, structure }) {
+function buildReplyPrompt({ course, question, tone, sentenceCount, wordsPerSentence, structure, voiceRules }) {
   const bio = course.instructor_bio ? `About you:\n${course.instructor_bio}\n\n` : '';
 
   const toneDesc = {
@@ -41,6 +41,8 @@ Write a feedback paragraph that:
 5. Closes with a concrete forward-looking instruction
 
 Do NOT restate or summarize the prompt. Do NOT be generic. Reference specific things from their post.
+${voiceRules ? '\nAdditional voice rules (always follow these):\n' + voiceRules : ''}
+
 Return ONLY the feedback paragraph. Nothing else.`;
 }
 
@@ -70,7 +72,7 @@ router.post('/reply', async (req, res) => {
   const {
     courseId, question, studentName, studentResponse,
     tone = 'warm', sentenceCount = 6, wordsPerSentence = 18, structure = 'organized',
-    refinement = '', previousResponse = ''
+    refinement = '', previousResponse = '', voiceRules = ''
   } = req.body;
 
   const course = db.prepare('SELECT * FROM courses WHERE id=?').get(courseId);
@@ -84,7 +86,7 @@ router.post('/reply', async (req, res) => {
       userMessage = `Student name: ${studentName}\n\nStudent submission:\n${studentResponse}\n\nWrite your instructor feedback paragraph.`;
     }
     const reply = await callClaude(
-      buildReplyPrompt({ course, question, tone, sentenceCount, wordsPerSentence, structure }),
+      buildReplyPrompt({ course, question, tone, sentenceCount, wordsPerSentence, structure, voiceRules }),
       userMessage
     );
     const id = uuidv4();

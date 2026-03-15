@@ -100,12 +100,74 @@ export default function CourseSettingsTab({ course, password, onUpdate, onDelete
         </div>
       </div>
 
-      {/* Instructor voice */}
+      {/* Voice & Response Style */}
       <div className="card" style={{ marginBottom: 14 }}>
-        <div style={{ fontWeight: 500, marginBottom: 12 }}>Instructor Voice</div>
+        <div style={{ fontWeight: 600, marginBottom: 4 }}>Voice and Response Style</div>
+        <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 12 }}>
+          These defaults apply to every response and feedback paragraph generated for this course. You can override them per session.
+        </div>
+
         <div className="field">
-          <label>Instructor bio (used in discussion responses)</label>
-          <textarea rows={5} value={form.instructorBio||''} onChange={e=>upd('instructorBio',e.target.value)} placeholder="Brief bio used to set instructor voice in discussion responses" style={{ fontSize: 12, lineHeight: 1.6 }} />
+          <label>Instructor bio (sets your voice in all responses)</label>
+          <textarea rows={4} value={form.instructorBio||''} onChange={e=>upd('instructorBio',e.target.value)}
+            placeholder="e.g. Former intelligence officer, now teaching AI strategy. Direct, no-nonsense, high standards. I push students to be specific and cite their sources properly."
+            style={{ fontSize: 12, lineHeight: 1.6 }} />
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+          <div>
+            <label>Default tone</label>
+            <select value={form.responseDefaults?.tone || 'warm'}
+              onChange={e => upd('responseDefaults', { ...form.responseDefaults, tone: e.target.value })}
+              style={{ fontSize: 13 }}>
+              <option value="warm">Warm mentor</option>
+              <option value="direct">Plain and direct</option>
+              <option value="formal">Formal academic</option>
+              <option value="encouraging">Encouraging</option>
+              <option value="socratic">Socratic</option>
+            </select>
+          </div>
+          <div>
+            <label>Default structure</label>
+            <select value={form.responseDefaults?.structure || 'organized'}
+              onChange={e => upd('responseDefaults', { ...form.responseDefaults, structure: e.target.value })}
+              style={{ fontSize: 13 }}>
+              <option value="organized">Strengths → gaps → forward</option>
+              <option value="flowing">Weave together</option>
+              <option value="critical">Gaps first → strengths</option>
+              <option value="question">End with a question</option>
+            </select>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+          <div>
+            <label>Default sentences per response: <strong>{form.responseDefaults?.sentences || 5}</strong></label>
+            <input type="range" min={2} max={10}
+              value={form.responseDefaults?.sentences || 5}
+              onChange={e => upd('responseDefaults', { ...form.responseDefaults, sentences: Number(e.target.value) })} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text3)' }}>
+              <span>2 (brief)</span><span>5</span><span>10 (detailed)</span>
+            </div>
+          </div>
+          <div>
+            <label>Max words per sentence: <strong>{form.responseDefaults?.wordsPerSentence || 18}</strong></label>
+            <input type="range" min={10} max={25}
+              value={form.responseDefaults?.wordsPerSentence || 18}
+              onChange={e => upd('responseDefaults', { ...form.responseDefaults, wordsPerSentence: Number(e.target.value) })} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text3)' }}>
+              <span>10</span><span>18</span><span>25</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="field" style={{ marginBottom: 0 }}>
+          <label>Voice rules (specific things to always / never do)</label>
+          <textarea rows={3} value={form.responseDefaults?.voiceRules || ''}
+            onChange={e => upd('responseDefaults', { ...form.responseDefaults, voiceRules: e.target.value })}
+            placeholder="e.g. Always use first name only. Never use 'great job'. Always cite specific lines from the student's post. Never use passive voice."
+            style={{ fontSize: 12, lineHeight: 1.6 }} />
+        </div>
         </div>
         <div className="field">
           <label>Voice guidelines</label>
