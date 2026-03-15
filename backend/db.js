@@ -209,6 +209,7 @@ function parseGrade(r) {
     summary:r.summary, key_strength:r.key_strength, key_improvement:r.key_improvement,
     instructor_paragraph:r.instructor_paragraph,
     resources: r.resources ? JSON.parse(r.resources) : [],
+    originalFilePath: r.original_file_path || null,
     gradedAt:r.graded_at };
 }
 

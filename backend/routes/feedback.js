@@ -355,154 +355,195 @@ router.get('/redlined-pdf/:gradeId', async (req, res) => {
   if (!grade) return res.status(404).json({ error: 'Grade not found' });
 
   const course = db.prepare('SELECT * FROM courses WHERE id=?').get(grade.courseId);
+  const fs = require('fs');
 
   try {
-    const { PDFDocument, rgb, StandardFonts, PDFName } = require('pdf-lib');
+    const { PDFDocument, rgb, StandardFonts, degrees } = require('pdf-lib');
 
-    const doc = await PDFDocument.create();
-    const font = await doc.embedFont(StandardFonts.Helvetica);
-    const bold = await doc.embedFont(StandardFonts.HelveticaBold);
-    const italic = await doc.embedFont(StandardFonts.HelveticaOblique);
-
-    const W = 612, H = 792, M = 48, CW = W - M * 2, LH = 16;
     const BLUE = rgb(0.15, 0.39, 0.92);
     const RED = rgb(0.86, 0.15, 0.15);
     const GREEN = rgb(0.09, 0.64, 0.29);
     const AMBER = rgb(0.85, 0.47, 0.04);
     const BLACK = rgb(0, 0, 0);
     const GRAY = rgb(0.45, 0.45, 0.45);
-    const LIGHT_RED = rgb(1, 0.95, 0.95);
-    const LIGHT_GREEN = rgb(0.94, 1, 0.94);
-    const LIGHT_BLUE = rgb(0.93, 0.96, 1);
+    const WHITE = rgb(1, 1, 1);
 
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+    const italic = await doc.embedFont(StandardFonts.HelveticaOblique);
+
+    // ── Page 1: If we have the original PDF, embed its pages ──────────
+    let originalPageCount = 0;
+    if (grade.originalFilePath && fs.existsSync(grade.originalFilePath)) {
+      try {
+        const originalBytes = fs.readFileSync(grade.originalFilePath);
+        const originalDoc = await PDFDocument.load(originalBytes);
+        const pageCount = originalDoc.getPageCount();
+        const pages = await doc.copyPages(originalDoc, [...Array(pageCount).keys()]);
+        
+        // Embed pages and add comment overlays on page 2 (annotated product)
+        for (let i = 0; i < pages.length; i++) {
+          const embeddedPage = doc.addPage(pages[i]);
+          const { width, height } = embeddedPage.getSize();
+          
+          if (i === 1) {
+            // Page 2 = annotated product — overlay comments as callout boxes
+            const comments = grade.comments?.annotated_product || [];
+            let commentY = height - 40;
+            let commentNum = 1;
+
+            // Draw semi-transparent header bar
+            embeddedPage.drawRectangle({
+              x: 0, y: height - 28, width, height: 28,
+              color: rgb(0.12, 0.25, 0.58), opacity: 0.9
+            });
+            embeddedPage.drawText(`INSTRUCTOR COMMENTS — ${grade.studentName || 'Student'}  |  Score: ${grade.total}/${grade.maxScore}`, {
+              x: 10, y: height - 18, size: 9, font: bold, color: WHITE, opacity: 1
+            });
+
+            // Place comment callout boxes on the right side
+            const boxX = width - 200;
+            for (const c of comments.slice(0, 6)) {
+              const isPos = c.type === 'positive';
+              const boxColor = isPos ? rgb(0.9, 1, 0.9) : rgb(1, 0.93, 0.93);
+              const borderColor = isPos ? GREEN : RED;
+              const textColor = isPos ? rgb(0, 0.4, 0) : rgb(0.6, 0, 0);
+              const prefix = isPos ? '+' : 'X';
+              const text = `${commentNum}. ${prefix} ${(c.text || '').slice(0, 80)}`;
+              const boxH = Math.max(32, Math.ceil(text.length / 32) * 11 + 10);
+
+              if (commentY - boxH < 30) break;
+
+              embeddedPage.drawRectangle({
+                x: boxX - 2, y: commentY - boxH, width: 198, height: boxH,
+                color: boxColor, opacity: 0.92,
+                borderColor, borderWidth: 1.5
+              });
+              embeddedPage.drawText(String(commentNum), {
+                x: boxX + 3, y: commentY - 11, size: 8, font: bold, color: borderColor
+              });
+
+              // Wrap text manually
+              const words = text.slice(3).split(' ');
+              let line = `${prefix} `;
+              let lineY = commentY - 11;
+              for (const w of words) {
+                const test = line + w + ' ';
+                if (font.widthOfTextAtSize(test, 7.5) > 180 && line.trim()) {
+                  embeddedPage.drawText(line.trim(), { x: boxX + 14, y: lineY, size: 7.5, font, color: textColor });
+                  lineY -= 10;
+                  line = w + ' ';
+                } else line = test;
+              }
+              if (line.trim()) embeddedPage.drawText(line.trim(), { x: boxX + 14, y: lineY, size: 7.5, font, color: textColor });
+
+              commentY -= boxH + 4;
+              commentNum++;
+            }
+          }
+          originalPageCount++;
+        }
+      } catch (e) {
+        console.error('Could not embed original PDF:', e.message);
+      }
+    }
+
+    // ── Summary feedback page ─────────────────────────────────────────
+    const W = 612, H = 792, M = 48, CW = W - M * 2, LH = 16;
     let page = doc.addPage([W, H]);
     let y = H - M;
 
     function np() { page = doc.addPage([W, H]); y = H - M; }
     function chk(n = 40) { if (y < M + n) np(); }
     function wrap(text, opts = {}) {
-      const { x = M, size = 10, color = BLACK, f = font, maxW = CW, indent = 0 } = opts;
-      const words = String(text || '').split(' ');
+      const { x = M, size = 10, color = BLACK, f = font, maxW = CW } = opts;
+      const words = String(text || '').replace(/[^ -ÿ]/g, '?').split(' ');
       let line = '';
       for (const w of words) {
         const t = line ? line + ' ' + w : w;
-        if (f.widthOfTextAtSize(t, size) > maxW - indent && line) {
-          chk();
-          page.drawText(line, { x: x + (line === words[0] ? 0 : indent), y, size, font: f, color });
-          y -= LH;
-          line = w;
+        if (f.widthOfTextAtSize(t, size) > maxW && line) {
+          chk(); page.drawText(line, { x, y, size, font: f, color }); y -= LH; line = w;
         } else line = t;
       }
-      if (line) {
-        chk();
-        page.drawText(line, { x, y, size, font: f, color });
-        y -= LH;
-      }
+      if (line) { chk(); page.drawText(line, { x, y, size, font: f, color }); y -= LH; }
     }
-    function rule(color = GRAY) {
-      chk(8);
-      page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 0.5, color });
-      y -= 8;
+    function rule(c = GRAY) {
+      chk(8); page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 0.5, color: c }); y -= 8;
     }
-    function badge(label, color, bgColor, bx, by) {
-      const w = font.widthOfTextAtSize(label, 9) + 12;
-      page.drawRectangle({ x: bx, y: by - 4, width: w, height: 14, color: bgColor, borderColor: color, borderWidth: 0.5 });
-      page.drawText(label, { x: bx + 6, y: by, size: 9, font: bold, color });
-      return w;
-    }
+    function sanitize(text) { return String(text || '').replace(/[^ -ÿ]/g, '-'); }
 
-    // ── Cover page ────────────────────────────────────────────────────────
+    // Header
     page.drawRectangle({ x: 0, y: H - 90, width: W, height: 90, color: rgb(0.12, 0.25, 0.58) });
-    page.drawText('GRADED FEEDBACK', { x: M, y: H - 36, size: 22, font: bold, color: rgb(1,1,1) });
-    page.drawText(`${course?.name || 'GEOG 661'} — ${grade.assignmentName || 'Lab'}`, { x: M, y: H - 58, size: 12, font, color: rgb(0.8, 0.88, 1) });
-    page.drawText(`Student: ${grade.studentName || 'Unknown'} · ${new Date(grade.gradedAt).toLocaleDateString()}`, { x: M, y: H - 76, size: 10, font, color: rgb(0.8, 0.88, 1) });
-    y = H - 110;
+    page.drawText('GRADED FEEDBACK', { x: M, y: H - 36, size: 20, font: bold, color: WHITE });
+    page.drawText(`${course?.name || 'GEOG 661'} — ${sanitize(grade.assignmentName)}`, { x: M, y: H - 56, size: 11, font, color: rgb(0.8, 0.88, 1) });
+    page.drawText(`Student: ${sanitize(grade.studentName)}    Date: ${new Date(grade.gradedAt).toLocaleDateString()}`, { x: M, y: H - 74, size: 9, font, color: rgb(0.8, 0.88, 1) });
+    y = H - 108;
 
-    // Score overview
+    // Score grid
     const s = grade.scores || {};
-    const sections = [
-      ['Annotated Product', 'annotated_product', 2],
-      ['Narrative', 'narrative', 2],
-      ['Context', 'context', 1],
-      ['Overall Quality', 'overall_quality', 1]
-    ];
-
-    y -= 8;
+    const sections = [['Annotated Product','annotated_product',2],['Narrative','narrative',2],['Context','context',1],['Quality','overall_quality',1]];
     const cellW = (CW - 12) / 4;
     sections.forEach(([label, key, mx], i) => {
       const val = parseFloat(s[key]) || 0;
       const pct = val / mx;
       const barColor = pct >= 0.85 ? GREEN : pct >= 0.6 ? AMBER : RED;
-      const cellX = M + i * (cellW + 4);
-      page.drawRectangle({ x: cellX, y: y - 36, width: cellW, height: 44, color: rgb(0.97, 0.97, 0.97) });
-      page.drawText(label.toUpperCase(), { x: cellX + 4, y, size: 7, font: bold, color: GRAY });
-      page.drawText(`${val}/${mx}`, { x: cellX + 4, y: y - 18, size: 18, font: bold, color: barColor });
+      const cx = M + i * (cellW + 4);
+      page.drawRectangle({ x: cx, y: y - 36, width: cellW, height: 44, color: rgb(0.96,0.96,0.96) });
+      page.drawText(label.toUpperCase(), { x: cx + 4, y, size: 7, font: bold, color: GRAY });
+      page.drawText(`${val}/${mx}`, { x: cx + 4, y: y - 18, size: 18, font: bold, color: barColor });
     });
     y -= 52;
 
-    // Total
-    const totalVal = parseFloat(grade.total) || 0;
-    const totalMax = parseFloat(grade.maxScore) || 6;
-    const totalPct = totalVal / totalMax;
+    const totalPct = parseFloat(grade.total) / parseFloat(grade.maxScore);
     const totalColor = totalPct >= 0.85 ? GREEN : totalPct >= 0.7 ? AMBER : RED;
-    page.drawRectangle({ x: M, y: y - 8, width: CW, height: 28, color: rgb(0.93, 0.96, 1) });
-    page.drawText('TOTAL', { x: M + 8, y: y + 4, size: 10, font: bold, color: BLUE });
-    page.drawText(`${grade.total} / ${grade.maxScore}  (${Math.round(totalPct * 100)}%)`, { x: M + 80, y: y + 4, size: 14, font: bold, color: totalColor });
+    page.drawRectangle({ x: M, y: y - 8, width: CW, height: 26, color: rgb(0.92, 0.95, 1) });
+    page.drawText(`TOTAL: ${grade.total} / ${grade.maxScore}  (${Math.round(totalPct * 100)}%)`, { x: M + 8, y: y + 2, size: 13, font: bold, color: totalColor });
     y -= 36;
     rule(BLUE);
 
-    // Key strength / improvement
+    // Strength / improvement
     if (grade.key_strength) {
-      page.drawRectangle({ x: M, y: y - 8, width: CW, height: LH + 8, color: LIGHT_GREEN });
-      page.drawText('+ ' + grade.key_strength, { x: M + 8, y, size: 10, font: bold, color: GREEN });
+      page.drawRectangle({ x: M, y: y - 8, width: CW, height: LH + 8, color: rgb(0.92, 1, 0.92) });
+      page.drawText('+ ' + sanitize(grade.key_strength), { x: M + 8, y, size: 10, font: bold, color: GREEN });
       y -= LH + 12;
     }
     if (grade.key_improvement) {
-      page.drawRectangle({ x: M, y: y - 8, width: CW, height: LH + 8, color: LIGHT_RED });
-      page.drawText('→ ' + grade.key_improvement, { x: M + 8, y, size: 10, font: bold, color: RED });
+      page.drawRectangle({ x: M, y: y - 8, width: CW, height: LH + 8, color: rgb(1, 0.93, 0.93) });
+      page.drawText('> ' + sanitize(grade.key_improvement), { x: M + 8, y, size: 10, font: bold, color: RED });
       y -= LH + 12;
     }
-    y -= 4;
-    rule();
+    y -= 4; rule();
 
     // Instructor paragraph
-    page.drawText('INSTRUCTOR FEEDBACK', { x: M, y, size: 9, font: bold, color: BLUE });
-    y -= LH + 2;
-    page.drawRectangle({ x: M, y: y - 8, width: 4, height: 80, color: BLUE });
-    wrap(grade.instructor_paragraph || 'No feedback paragraph generated.', { x: M + 12, size: 11, f: italic, color: rgb(0.1, 0.1, 0.3), maxW: CW - 12 });
-    y -= 8;
-    rule();
+    page.drawText('INSTRUCTOR FEEDBACK', { x: M, y, size: 9, font: bold, color: BLUE }); y -= LH + 2;
+    page.drawRectangle({ x: M, y: y - 60, width: 4, height: 68, color: BLUE });
+    wrap(sanitize(grade.instructor_paragraph || 'No feedback generated.'), { x: M + 12, size: 11, f: italic, color: rgb(0.1,0.1,0.3), maxW: CW - 12 });
+    y -= 8; rule();
 
-    // Section comments
-    for (const [key, label] of Object.entries({ annotated_product: 'Annotated Product', narrative: 'Narrative', context: 'Context', overall_quality: 'Overall Quality' })) {
+    // Comments per section
+    for (const [key, label] of Object.entries({ annotated_product:'Annotated Product', narrative:'Narrative', context:'Context', overall_quality:'Overall Quality' })) {
       const comments = grade.comments?.[key] || [];
       if (!comments.length) continue;
-
       chk(30);
-      page.drawText(label.toUpperCase(), { x: M, y, size: 9, font: bold, color: GRAY });
       const secVal = parseFloat(s[key]) || 0;
-      const secMax = { annotated_product: 2, narrative: 2, context: 1, overall_quality: 1 }[key] || 1;
-      page.drawText(`${secVal}/${secMax}`, { x: W - M - 25, y, size: 10, font: bold, color: secVal/secMax >= 0.85 ? GREEN : secVal/secMax >= 0.6 ? AMBER : RED });
+      const secMax = { annotated_product:2, narrative:2, context:1, overall_quality:1 }[key] || 1;
+      page.drawText(label.toUpperCase(), { x: M, y, size: 9, font: bold, color: GRAY });
+      page.drawText(`${secVal}/${secMax}`, { x: W-M-25, y, size: 10, font: bold, color: secVal/secMax >= 0.85 ? GREEN : secVal/secMax >= 0.6 ? AMBER : RED });
       y -= LH;
-      page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 0.3, color: rgb(0.8, 0.8, 0.8) });
-      y -= 6;
+      page.drawLine({ start:{x:M,y}, end:{x:W-M,y}, thickness:0.3, color:rgb(0.8,0.8,0.8) }); y -= 6;
 
       for (const c of comments) {
         const isPos = c.type === 'positive';
-        const commentColor = isPos ? GREEN : RED;
-        const bgColor = isPos ? LIGHT_GREEN : LIGHT_RED;
-        const prefix = isPos ? '+ ' : '✗ ';
-
-        chk(24);
-        const textW = CW - 20;
-        const approxH = Math.ceil(font.widthOfTextAtSize((c.text || ''), 10) / textW) * LH + 12;
-        page.drawRectangle({ x: M, y: y - approxH + LH, width: CW, height: approxH, color: bgColor });
-        page.drawRectangle({ x: M, y: y - approxH + LH, width: 3, height: approxH, color: commentColor });
-        wrap(prefix + (c.text || ''), { x: M + 8, size: 10, color: BLACK, maxW: textW });
-
+        const boxBg = isPos ? rgb(0.92,1,0.92) : rgb(1,0.94,0.94);
+        const boxBorder = isPos ? GREEN : RED;
+        const approxH = Math.max(20, Math.ceil((sanitize(c.text||'').length * 6) / (CW-20)) + 14);
+        chk(approxH + 16);
+        page.drawRectangle({ x:M, y:y-approxH+LH, width:CW, height:approxH, color:boxBg });
+        page.drawRectangle({ x:M, y:y-approxH+LH, width:3, height:approxH, color:boxBorder });
+        wrap((isPos ? '+ ' : 'X ') + sanitize(c.text || ''), { x:M+8, size:10, color:BLACK, maxW:CW-16 });
         if (c.rewrite && c.type !== 'positive') {
-          chk(20);
-          wrap('↳ ' + c.rewrite.replace(/^Suggested rewrite:\s*/i, ''), { x: M + 16, size: 9, f: italic, color: BLUE, maxW: CW - 16 });
+          wrap('>> ' + sanitize(c.rewrite.replace(/^Suggested rewrite:\s*/i,'')), { x:M+16, size:9, f:italic, color:BLUE, maxW:CW-16 });
         }
         y -= 4;
       }
@@ -511,37 +552,28 @@ router.get('/redlined-pdf/:gradeId', async (req, res) => {
 
     // Resources
     if (grade.resources?.length) {
-      chk(40);
-      rule(BLUE);
-      page.drawText('RECOMMENDED RESOURCES', { x: M, y, size: 9, font: bold, color: BLUE });
-      y -= LH + 2;
-
+      chk(40); rule(BLUE);
+      page.drawText('RECOMMENDED RESOURCES', { x:M, y, size:9, font:bold, color:BLUE }); y -= LH + 2;
       for (const r of grade.resources) {
         chk(36);
-        page.drawRectangle({ x: M, y: y - 28, width: CW, height: 36, color: LIGHT_BLUE });
-        page.drawText(r.title || r.url, { x: M + 8, y, size: 11, font: bold, color: BLUE });
-        y -= LH;
-        if (r.why) {
-          page.drawText(r.why, { x: M + 8, y, size: 9, font, color: GRAY });
-          y -= LH;
-        }
-        page.drawText(r.url, { x: M + 8, y, size: 8, font, color: BLUE });
-        y -= LH + 8;
+        page.drawRectangle({ x:M, y:y-28, width:CW, height:36, color:rgb(0.92,0.96,1) });
+        page.drawText(sanitize(r.title || r.url), { x:M+8, y, size:11, font:bold, color:BLUE }); y -= LH;
+        if (r.why) { page.drawText(sanitize(r.why), { x:M+8, y, size:9, font, color:GRAY }); y -= LH; }
+        page.drawText(sanitize(r.url), { x:M+8, y, size:8, font, color:BLUE }); y -= LH + 8;
       }
     }
 
-    // Footer
-    chk(20);
-    rule();
-    page.drawText(`${course?.name || 'GEOG 661'} · Teaching Platform · INSTRUCTOR ONLY`, { x: M, y, size: 8, font, color: GRAY });
+    chk(20); rule();
+    page.drawText(`${course?.name || 'GEOG 661'} - Teaching Platform - INSTRUCTOR ONLY`, { x:M, y, size:8, font, color:GRAY });
 
     const pdfBytes = await doc.save();
-    const safeName = (grade.studentName || 'unknown').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    const safeName = sanitize(grade.studentName || 'unknown').replace(/\s+/g,'_').toLowerCase();
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${safeName}_graded_feedback.pdf"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}_graded.pdf"`);
     res.send(Buffer.from(pdfBytes));
   } catch (e) {
     console.error('Redlined PDF error:', e);
     res.status(500).json({ error: e.message });
   }
 });
+
