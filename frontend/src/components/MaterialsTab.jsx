@@ -35,6 +35,7 @@ export default function MaterialsTab({ course, password }) {
   const [materials, setMaterials] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(null); // {file, step, steps}
   const [preview, setPreview] = useState(null);
   const [showLink, setShowLink] = useState(false);
   const [linkForm, setLinkForm] = useState({ name: '', url: '', weekNumber: '', assignmentId: '', materialType: 'lecture' });
@@ -50,8 +51,23 @@ export default function MaterialsTab({ course, password }) {
   }, [course.id]);
 
   async function handleUpload(files) {
+    const fileList = Array.from(files);
     setUploading(true);
-    for (const file of Array.from(files)) {
+
+    for (let i = 0; i < fileList.length; i++) {
+      const file = fileList[i];
+      const ext = file.name.split('.').pop().toLowerCase();
+      const isVisual = ['pdf', 'pptx', 'ppt'].includes(ext);
+
+      const steps = [
+        { key: 'upload', label: 'Uploading file…' },
+        { key: 'text', label: 'Extracting text…' },
+        isVisual ? { key: 'image', label: 'Analyzing images and slides…' } : null,
+        { key: 'index', label: 'Indexing for grading…' },
+      ].filter(Boolean);
+
+      setUploadProgress({ file: file.name, step: 0, steps, total: fileList.length, current: i + 1 });
+
       const fd = new FormData();
       fd.append('file', file);
       fd.append('courseId', course.id);
@@ -59,14 +75,37 @@ export default function MaterialsTab({ course, password }) {
       if (uploadForm.weekNumber) fd.append('weekNumber', uploadForm.weekNumber);
       if (uploadForm.assignmentId) fd.append('assignmentId', uploadForm.assignmentId);
       fd.append('materialType', uploadForm.materialType || 'lecture');
+
       try {
+        // Simulate step progression while upload happens
+        let stepIdx = 0;
+        const stepTimer = setInterval(() => {
+          stepIdx = Math.min(stepIdx + 1, steps.length - 1);
+          setUploadProgress(p => p ? { ...p, step: stepIdx } : null);
+        }, 800);
+
         const r = await fetch(`${BASE}/api/materials/upload`, {
           method: 'POST', headers: h(password), body: fd
         });
-        const mat = await r.json();
-        setMaterials(m => [mat, ...m.filter(x => x.id !== mat.id)]);
-      } catch (e) { console.error(e); }
+        clearInterval(stepTimer);
+
+        if (r.ok) {
+          const mat = await r.json();
+          setUploadProgress(p => p ? { ...p, step: steps.length, done: true } : null);
+          setMaterials(m => [mat, ...m.filter(x => x.id !== mat.id)]);
+          await new Promise(r => setTimeout(r, 600)); // brief done flash
+        } else {
+          const err = await r.json();
+          setUploadProgress(p => p ? { ...p, error: err.error || 'Upload failed' } : null);
+          await new Promise(r => setTimeout(r, 2000));
+        }
+      } catch (e) {
+        setUploadProgress(p => p ? { ...p, error: e.message } : null);
+        await new Promise(r => setTimeout(r, 2000));
+      }
     }
+
+    setUploadProgress(null);
     setUploadForm({ name: '', weekNumber: '', assignmentId: '', materialType: 'lecture' });
     setUploading(false);
   }
@@ -117,6 +156,73 @@ export default function MaterialsTab({ course, password }) {
 
       <input ref={fileRef} type="file" accept=".pdf,.ppt,.pptx,.doc,.docx" multiple style={{ display: 'none' }}
         onChange={e => handleUpload(e.target.files)} />
+
+      {/* Upload progress */}
+      {uploadProgress && (
+        <div className="card" style={{ marginBottom: 14, borderColor: uploadProgress.error ? 'var(--red)' : uploadProgress.done ? 'var(--green)' : 'var(--accent)', borderWidth: 2 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <div style={{ fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 340 }}>
+              {uploadProgress.file}
+            </div>
+            {uploadProgress.total > 1 && (
+              <span style={{ fontSize: 12, color: 'var(--text3)', flexShrink: 0 }}>
+                {uploadProgress.current} of {uploadProgress.total}
+              </span>
+            )}
+          </div>
+
+          {/* Step indicators */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+            {uploadProgress.steps.map((s, i) => {
+              const isDone = i < uploadProgress.step || uploadProgress.done;
+              const isActive = i === uploadProgress.step && !uploadProgress.done && !uploadProgress.error;
+              return (
+                <div key={s.key} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                  <div style={{
+                    width: 28, height: 28, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: uploadProgress.error && isActive ? 'var(--red)' :
+                                isDone ? 'var(--green)' :
+                                isActive ? 'var(--accent)' : 'var(--bg3)',
+                    border: `2px solid ${uploadProgress.error && isActive ? 'var(--red)' : isDone ? 'var(--green)' : isActive ? 'var(--accent)' : 'var(--border)'}`,
+                    transition: 'all 0.3s'
+                  }}>
+                    {isDone ? (
+                      <span style={{ color: '#fff', fontSize: 13 }}>✓</span>
+                    ) : isActive ? (
+                      <span style={{ color: '#fff', fontSize: 10, animation: 'spin 1s linear infinite' }}>⟳</span>
+                    ) : (
+                      <span style={{ color: 'var(--text3)', fontSize: 11 }}>{i + 1}</span>
+                    )}
+                  </div>
+                  <span style={{ fontSize: 10, color: isDone ? 'var(--green)' : isActive ? 'var(--accent)' : 'var(--text3)', textAlign: 'center', lineHeight: 1.3 }}>
+                    {s.label.replace('…', '')}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Progress bar */}
+          <div style={{ height: 4, background: 'var(--bg3)', borderRadius: 2, overflow: 'hidden' }}>
+            <div style={{
+              height: '100%', borderRadius: 2,
+              background: uploadProgress.error ? 'var(--red)' : uploadProgress.done ? 'var(--green)' : 'var(--accent)',
+              width: uploadProgress.error ? '100%' :
+                     uploadProgress.done ? '100%' :
+                     `${(uploadProgress.step / uploadProgress.steps.length) * 100}%`,
+              transition: 'width 0.4s ease, background 0.3s'
+            }} />
+          </div>
+
+          {/* Status text */}
+          <div style={{ marginTop: 8, fontSize: 12,
+            color: uploadProgress.error ? 'var(--red)' : uploadProgress.done ? 'var(--green)' : 'var(--text2)' }}>
+            {uploadProgress.error ? '✗ ' + uploadProgress.error :
+             uploadProgress.done ? '✓ Uploaded and indexed successfully' :
+             uploadProgress.steps[uploadProgress.step]?.label || 'Processing…'}
+          </div>
+        </div>
+      )}
 
       {/* Upload options */}
       <div className="card" style={{ marginBottom: 14, borderColor: uploadForm.materialType === 'lecture' ? 'var(--accent)' : 'var(--border)', borderWidth: uploadForm.materialType === 'lecture' ? 2 : 1 }}>
