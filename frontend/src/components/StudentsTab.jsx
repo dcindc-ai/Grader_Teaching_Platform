@@ -175,10 +175,19 @@ function StudentDetail({ student, course, password, onBack }) {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-        <button className="ghost" style={{ fontSize: 12 }} onClick={onBack}>
-        ← All students
-      </button>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <button className="ghost" style={{ fontSize: 12 }} onClick={onBack}>← All students</button>
+        <button className="danger" style={{ fontSize: 12 }}
+          onClick={async () => {
+            if (!confirm(`Delete ALL grades for ${student.name}? This cannot be undone.`)) return;
+            for (const g of student.grades || []) {
+              await fetch(`${BASE}/api/grade/${g.id}`, { method: 'DELETE', headers: { 'x-admin-password': password } });
+            }
+            onBack();
+          }}>
+          Delete all grades
+        </button>
+      </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
         <div>
