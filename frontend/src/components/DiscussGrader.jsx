@@ -584,7 +584,17 @@ export default function DiscussGrader({ course, password, assignments, question,
                           {copied === `c-${c.id}` ? '✓' : 'Copy'}
                         </button>
                         <input type="number" value={pts} min="0" max={c.maxPoints} step="0.5"
-                          onChange={e => setScores(s => ({ ...s, [c.name]: parseFloat(e.target.value) || 0 }))}
+                          onChange={e => {
+                            const val = parseFloat(e.target.value) || 0;
+                            setScores(s => ({ ...s, [c.name]: val }));
+                            // Find matching rating tier for this score
+                            const match = c.ratings
+                              .slice()
+                              .sort((a, b) => a.points - b.points)
+                              .find(r => val <= r.points) ||
+                              c.ratings.slice().sort((a, b) => b.points - a.points)[0];
+                            if (match) setRatings(rv => ({ ...rv, [c.name]: match.name }));
+                          }}
                           style={{ width: 46, fontSize: 14, fontWeight: 700, fontFamily: 'var(--mono)', textAlign: 'center', padding: '2px 4px' }} />
                         <span style={{ fontSize: 11, color: 'var(--text3)' }}>/ {c.maxPoints}</span>
                       </div>
