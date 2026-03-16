@@ -758,7 +758,7 @@ function CompletionGrader({ course, password, assignments }) {
           ))}
         </div>
       )}
-      </div> {/* end main grader */}
-    </div> {/* end flex wrapper */}
+      </div>
+    </div>
   );
 }
