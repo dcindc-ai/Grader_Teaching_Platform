@@ -114,7 +114,25 @@ export default function ReviewPanel({ grade: initialGrade, password, onDelete, o
     window.open(`${BASE}/api/feedback/redlined-pdf/${grade.id}?password=${encodeURIComponent(password)}`, '_blank');
   }
 
-  function copyParagraph() {
+  const [annotating, setAnnotating] = useState(false);
+  const [annotateMsg, setAnnotateMsg] = useState('');
+
+  async function annotateAndDownload(force = false) {
+    setAnnotating(true);
+    setAnnotateMsg('Sending to Claude for annotation…');
+    try {
+      const url = `${BASE}/api/annotate/${grade.id}${force ? '?force=true' : ''}`;
+      const r = await fetch(url, { method: 'POST', headers: { 'x-admin-password': password } });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Annotation failed');
+      setAnnotateMsg(d.cached ? 'Opening cached version…' : 'Done! Downloading…');
+      window.open(`${BASE}/api/annotate/${grade.id}/download`, '_blank');
+    } catch (e) {
+      setAnnotateMsg('Error: ' + e.message);
+    }
+    setAnnotating(false);
+    setTimeout(() => setAnnotateMsg(''), 4000);
+  }
     navigator.clipboard.writeText(grade.instructor_paragraph || '');
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -327,6 +345,26 @@ export default function ReviewPanel({ grade: initialGrade, password, onDelete, o
               </button>
               <button style={{ fontSize: 13 }} onClick={downloadDocx}>↓ Word doc</button>
               <button style={{ fontSize: 13 }} onClick={downloadRedlinedPDF}>📋 Redlined PDF</button>
+              <button
+                style={{ fontSize: 13, background: annotating ? 'var(--amber)' : 'var(--blue)', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', cursor: annotating ? 'wait' : 'pointer' }}
+                onClick={() => annotateAndDownload(false)}
+                disabled={annotating}
+                title="Claude analyzes the submission and places annotations directly on the PDF"
+              >
+                {annotating ? '⏳ Annotating…' : '✏️ Annotate PDF'}
+              </button>
+            </div>
+            {annotateMsg && (
+              <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 6, fontStyle: 'italic' }}>
+                {annotateMsg}{' '}
+                {!annotating && annotateMsg.includes('Downloading') && (
+                  <span
+                    style={{ color: 'var(--blue)', cursor: 'pointer', textDecoration: 'underline' }}
+                    onClick={() => annotateAndDownload(true)}
+                  >Re-annotate</span>
+                )}
+              </div>
+            )}
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: 12, color: 'var(--text3)' }}>

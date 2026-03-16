@@ -15,6 +15,7 @@ function migrate(db) {
     "ALTER TABLE grades ADD COLUMN student_id TEXT",
     "ALTER TABLE grades ADD COLUMN resources TEXT DEFAULT '[]'",
     "ALTER TABLE grades ADD COLUMN original_file_path TEXT",
+    "ALTER TABLE grades ADD COLUMN annotated_file_path TEXT",
     "ALTER TABLE grades ADD COLUMN summary TEXT",
     "ALTER TABLE grades ADD COLUMN key_strength TEXT",
     "ALTER TABLE grades ADD COLUMN key_improvement TEXT",
