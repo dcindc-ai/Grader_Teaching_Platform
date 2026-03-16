@@ -330,7 +330,7 @@ async function gradeOne(filePath, assignment, course, skipAlwaysOn=false) {
   const gradeResult = JSON.parse(text.replace(/```json\n?|```/g, '').trim());
 
   // Generate Always-On (skipped in batch mode to save tokens)
-  if (skipAlwaysOn) return { gradeResult: parsed }; in parallel
+  if (skipAlwaysOn) return { gradeResult };
   let alwaysOn = null;
   try {
     alwaysOn = await generateAlwaysOn(client, gradeResult, course, assignment);
