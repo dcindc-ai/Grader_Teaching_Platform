@@ -414,28 +414,36 @@ router.post('/batch', upload.array('files', 50), async (req, res) => {
         db.prepare('UPDATE grades SET original_file_path=? WHERE id=?').run(savedPath, gradeId);
       } catch(e) { console.error('Could not save original PDF:', e.message); }
 
-      if (alwaysOn) {
+      // Resolve student name BEFORE creating Always-On
+      // Order: (1) roster match by name, (2) filename parse, (3) Claude-extracted name
+      const parsedFromFile = parseNameFromFilename(originalName);
+      const studentMatch = matchStudentRecord(db, courseId, gradeResult.studentName, originalName);
+
+      let finalStudentName = gradeResult.studentName || '';
+      if (studentMatch) {
+        finalStudentName = studentMatch.name;
+        db.prepare('UPDATE grades SET student_name=?, student_id=? WHERE id=?')
+          .run(finalStudentName, studentMatch.id, gradeId);
+      } else if (parsedFromFile?.fullName && (!finalStudentName || finalStudentName === 'Unknown')) {
+        finalStudentName = parsedFromFile.fullName;
+        db.prepare('UPDATE grades SET student_name=? WHERE id=?')
+          .run(finalStudentName, gradeId);
+      } else if (finalStudentName && finalStudentName !== 'Unknown') {
+        // Keep Claude-extracted name as-is
+      } else {
+        finalStudentName = 'Unknown';
+      }
+
+      // Now create Always-On with the verified name
+      if (alwaysOn && finalStudentName !== 'Unknown') {
         insertAO.run(
-          uuidv4(), gradeId, gradeResult.studentName || 'Unknown',
+          uuidv4(), gradeId, finalStudentName,
           courseId, assignmentId, assignment.name,
           alwaysOn.weakArea, alwaysOn.feedbackSentences,
           JSON.stringify(alwaysOn.links || [])
         );
-      }
-
-      // Try to match to student roster and get proper name
-      const parsedFromFile = parseNameFromFilename(originalName);
-      const studentMatch = matchStudentRecord(db, courseId, gradeResult.studentName, originalName);
-      
-      let finalStudentName = gradeResult.studentName || 'Unknown';
-      if (studentMatch) {
-        finalStudentName = studentMatch.name || finalStudentName;
-        db.prepare('UPDATE grades SET student_name=?, student_id=? WHERE id=?')
-          .run(finalStudentName, studentMatch.id, gradeId);
-      } else if (parsedFromFile?.fullName && finalStudentName === 'Unknown') {
-        finalStudentName = parsedFromFile.fullName;
-        db.prepare('UPDATE grades SET student_name=? WHERE id=?')
-          .run(finalStudentName, gradeId);
+      } else if (alwaysOn && finalStudentName === 'Unknown') {
+        console.log(`Skipped Always-On for unresolved student in file: ${originalName}`);
       }
 
       // Delay between files to respect rate limits (30k tokens/min)
