@@ -148,6 +148,28 @@ Grade this submission against each criterion. Return ONLY valid JSON, no markdow
           JSON.stringify(scores), JSON.stringify(result.criteriaGrades || []),
           result.overallSummary || '', '', '', result.instructorParagraph || ''
         );
+
+        // Match student record and set student_id
+        if (studentName && studentName !== 'Unknown') {
+          const students = db.prepare('SELECT * FROM students WHERE course_id=?').all(courseId);
+          const nameLower = studentName.toLowerCase();
+          const match = students.find(s => {
+            const full = `${s.first_name} ${s.last_name}`.toLowerCase();
+            const rev  = `${s.last_name} ${s.first_name}`.toLowerCase();
+            return full === nameLower || rev === nameLower || (s.name || '').toLowerCase() === nameLower;
+          }) || students.find(s => {
+            const parts = nameLower.split(' ');
+            const last = parts[parts.length - 1];
+            const first = parts[0];
+            return (s.last_name || '').toLowerCase() === last &&
+                   (s.first_name || '').toLowerCase().startsWith(first[0]);
+          });
+          if (match) {
+            db.prepare('UPDATE grades SET student_id=?, student_name=? WHERE id=?')
+              .run(match.id, `${match.first_name} ${match.last_name}`.trim(), gradeId);
+          }
+        }
+
         result.gradeId = gradeId;
       } catch (e) {
         console.error('Grade save error:', e.message);

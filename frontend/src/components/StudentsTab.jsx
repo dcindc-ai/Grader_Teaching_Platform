@@ -490,6 +490,16 @@ function StudentRecord({ student: initialStudent, course, password, onBack, allS
               {avg !== null && (
                 <div style={{ fontFamily: 'var(--mono)', fontSize: 30, fontWeight: 700, color: avgColor }}>{avg}%</div>
               )}
+              {grades.length > 0 && (() => {
+                const totalEarned = grades.reduce((a, g) => a + (parseFloat(g.total) || 0), 0);
+                const totalPossible = grades.reduce((a, g) => a + (parseFloat(g.maxScore) || 0), 0);
+                return (
+                  <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>
+                    <span style={{ fontFamily: 'var(--mono)', fontWeight: 600 }}>{totalEarned.toFixed(1)}</span>
+                    <span style={{ color: 'var(--text3)' }}>/{totalPossible} pts total</span>
+                  </div>
+                );
+              })()}
               <div style={{ fontSize: 11, color: 'var(--text3)' }}>{grades.length} assignment{grades.length !== 1 ? 's' : ''}</div>
             </div>
           </div>
@@ -570,8 +580,24 @@ function StudentRecord({ student: initialStudent, course, password, onBack, allS
       </div>
 
       {/* Grade history */}
-      <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 10 }}>
-        Grade History {grades.length > 0 && <span className="badge" style={{ marginLeft: 8 }}>{grades.length}</span>}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+        <div style={{ fontWeight: 600, fontSize: 15 }}>
+          Grade History {grades.length > 0 && <span className="badge" style={{ marginLeft: 8 }}>{grades.length}</span>}
+        </div>
+        {grades.length > 0 && (() => {
+          const earned = grades.reduce((a, g) => a + (parseFloat(g.total) || 0), 0);
+          const possible = grades.reduce((a, g) => a + (parseFloat(g.maxScore) || 0), 0);
+          const pct = possible ? Math.round(earned / possible * 100) : 0;
+          const color = pct >= 85 ? 'var(--green)' : pct >= 70 ? 'var(--amber)' : 'var(--red)';
+          return (
+            <div style={{ fontSize: 13, color: 'var(--text2)' }}>
+              Running total: <span style={{ fontFamily: 'var(--mono)', fontWeight: 700, color }}>
+                {earned.toFixed(1)}/{possible}
+              </span>
+              <span style={{ color, fontWeight: 600, marginLeft: 6 }}>({pct}%)</span>
+            </div>
+          );
+        })()}
       </div>
 
       {grades.length === 0 ? (

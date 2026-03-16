@@ -159,7 +159,11 @@ router.get('/match', (req, res) => {
 router.get('/progress/:courseId', (req, res) => {
   const students = db.prepare('SELECT * FROM students WHERE course_id=? ORDER BY last_name ASC, first_name ASC').all(req.params.courseId);
   const progress = students.map(s => {
-    const grades = db.prepare('SELECT * FROM grades WHERE student_id=? ORDER BY graded_at DESC').all(s.id);
+    const grades = db.prepare(`
+      SELECT * FROM grades
+      WHERE (student_id=? OR (course_id=? AND student_name=? AND (student_id IS NULL OR student_id='')))
+      ORDER BY graded_at DESC
+    `).all(s.id, s.course_id, s.name);
     const avg = grades.length
       ? (grades.reduce((a, g) => a + (parseFloat(g.total)||0) / (parseFloat(g.max_score)||1), 0) / grades.length * 100).toFixed(0)
       : null;
