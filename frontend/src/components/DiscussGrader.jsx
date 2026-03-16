@@ -15,7 +15,7 @@ const RATING_COLORS = {
 // Grade rubric + write instructor response in one place.
 // Copy everything to Canvas when done.
 
-export default function DiscussGrader({ course, password, assignments, question, onSubmissionGraded }) {
+export default function DiscussGrader({ course, password, assignments, question, onSubmissionGraded, students = [] }) {
   const isCompletion = course.gradingModel === 'completion';
 
   const [selectedAssignment, setSelectedAssignment] = useState(null);
@@ -24,6 +24,8 @@ export default function DiscussGrader({ course, password, assignments, question,
 
   // Student input
   const [studentName, setStudentName] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const nameInputRef = useRef(null);
   const [submission, setSubmission] = useState('');
 
   // Grading state
@@ -217,7 +219,7 @@ export default function DiscussGrader({ course, password, assignments, question,
   }
 
   function nextStudent() {
-    setStudentName(''); setSubmission(''); setResult(null);
+    setStudentName(''); setShowSuggestions(false); setSubmission(''); setResult(null);
     setScores({}); setRatings({}); setRationale({});
     setResponse(''); setSavedAsExample(false); setRefinement('');
   }
@@ -270,10 +272,46 @@ export default function DiscussGrader({ course, password, assignments, question,
       <div className="two-col" style={{ gap: 16, alignItems: 'start' }}>
         {/* Left: student input */}
         <div>
-          <div className="field">
+          <div className="field" style={{ position: 'relative' }}>
             <label>Student name</label>
-            <input type="text" value={studentName} onChange={e => setStudentName(e.target.value)}
-              placeholder="First and last name" />
+            <input
+              ref={nameInputRef}
+              type="text"
+              value={studentName}
+              onChange={e => { setStudentName(e.target.value); setShowSuggestions(true); }}
+              onFocus={() => setShowSuggestions(true)}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+              placeholder="Type to search roster…"
+            />
+            {showSuggestions && studentName.length > 0 && (() => {
+              const q = studentName.toLowerCase();
+              const matches = students.filter(s =>
+                `${s.firstName} ${s.lastName}`.toLowerCase().includes(q) ||
+                (s.nickname || '').toLowerCase().includes(q)
+              ).slice(0, 8);
+              if (!matches.length) return null;
+              return (
+                <div style={{
+                  position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100,
+                  background: '#fff', border: '1px solid var(--border)', borderRadius: 6,
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.12)', maxHeight: 220, overflowY: 'auto'
+                }}>
+                  {matches.map(s => (
+                    <div key={s.id}
+                      onMouseDown={() => { setStudentName(`${s.firstName} ${s.lastName}`); setShowSuggestions(false); }}
+                      style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13,
+                        borderBottom: '1px solid var(--bg2)' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg2)'}
+                      onMouseLeave={e => e.currentTarget.style.background = '#fff'}
+                    >
+                      <span style={{ fontWeight: 600 }}>{s.firstName} {s.lastName}</span>
+                      {s.nickname && <span style={{ fontSize: 11, color: 'var(--text3)', marginLeft: 6 }}>"{s.nickname}"</span>}
+                      {s.email && <span style={{ fontSize: 11, color: 'var(--text3)', marginLeft: 6 }}>{s.email}</span>}
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
           <div className="field" style={{ marginBottom: 10 }}>
             <label>Student submission (initial post + peer responses)</label>

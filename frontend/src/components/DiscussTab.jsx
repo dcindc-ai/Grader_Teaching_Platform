@@ -14,13 +14,20 @@ export default function DiscussTab({ course, password, session, onSession, assig
   const [view, setView] = useState('grade'); // 'grade' | 'summary' | 'students'
   const [assignments, setAssignments] = useState(propAssignments || []);
 
+  const [students, setStudents] = useState([]);
+
+  useEffect(() => {
+    fetch(`${BASE}/api/students?courseId=${course.id}`)
+      .then(r => r.json())
+      .then(data => setStudents(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, [course.id]);
+
   useEffect(() => {
     if (!propAssignments?.length) {
       getAssignments(course.id, password).then(setAssignments);
     }
   }, [course.id]);
-
-  async function handleSummary() {
     if (submissions.length < 2) return;
     setSummaryLoading(true);
     setSummary('');
@@ -101,6 +108,7 @@ export default function DiscussTab({ course, password, session, onSession, assig
           password={password}
           assignments={assignments}
           question={question}
+          students={students}
           onSubmissionGraded={(name, post) => {
             onSession(s => ({
               ...s,
