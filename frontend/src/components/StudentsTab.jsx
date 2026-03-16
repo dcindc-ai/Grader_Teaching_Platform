@@ -8,10 +8,12 @@ export default function StudentsTab({ course, password }) {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
   const [search, setSearch] = useState('');
-  const [uploadState, setUploadState] = useState(null); // {status, progress, total, added, skipped, matched, error}
+  const [uploadState, setUploadState] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [addForm, setAddForm] = useState({ firstName: '', lastName: '', email: '' });
+  const [checkedIds, setCheckedIds] = useState(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const fileRef = useRef();
   const uploadAbortRef = useRef(false);
 
@@ -117,15 +119,48 @@ export default function StudentsTab({ course, password }) {
     loadStudents();
   }
 
+  async function bulkDelete() {
+    if (!checkedIds.size) return;
+    if (!confirm(`Remove ${checkedIds.size} student${checkedIds.size > 1 ? 's' : ''} from the roster? Grades are kept.`)) return;
+    setBulkDeleting(true);
+    await Promise.all([...checkedIds].map(id =>
+      fetch(`${BASE}/api/students/${id}`, { method: 'DELETE', headers: { 'x-admin-password': password } })
+    ));
+    setCheckedIds(new Set());
+    setBulkDeleting(false);
+    loadStudents();
+  }
+
+  function toggleCheck(e, id) {
+    e.stopPropagation();
+    setCheckedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    if (checkedIds.size === filtered.length) {
+      setCheckedIds(new Set());
+    } else {
+      setCheckedIds(new Set(filtered.map(s => s.id)));
+    }
+  }
+
   const filtered = students.filter(s =>
     !search || `${s.firstName} ${s.lastName} ${s.nickname} ${s.email}`.toLowerCase().includes(search.toLowerCase())
   );
 
   if (selected) {
+    const idx = filtered.findIndex(s => s.id === selected.id);
     return <StudentRecord
       student={selected}
       course={course}
       password={password}
+      allStudents={filtered}
+      currentIndex={idx}
+      onNavigate={s => setSelected(s)}
       onBack={() => { setSelected(null); loadStudents(); }}
     />;
   }
@@ -222,10 +257,32 @@ export default function StudentsTab({ course, password }) {
         </div>
       )}
 
-      {/* Search */}
-      <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-        placeholder="Search by name, nickname, or email…"
-        style={{ marginBottom: 12, fontSize: 13 }} />
+      {/* Bulk action bar */}
+      {checkedIds.size > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10,
+          padding: '8px 12px', background: 'var(--bg2)', borderRadius: 8, border: '1px solid var(--border)' }}>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>{checkedIds.size} selected</span>
+          <button className="danger" style={{ fontSize: 12 }} onClick={bulkDelete} disabled={bulkDeleting}>
+            {bulkDeleting ? 'Removing…' : `Remove ${checkedIds.size} student${checkedIds.size > 1 ? 's' : ''}`}
+          </button>
+          <button style={{ fontSize: 12 }} onClick={() => setCheckedIds(new Set())}>Clear selection</button>
+        </div>
+      )}
+
+      {/* Search + select all row */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+        {filtered.length > 0 && (
+          <input type="checkbox"
+            checked={checkedIds.size === filtered.length && filtered.length > 0}
+            onChange={toggleAll}
+            title="Select all"
+            style={{ width: 15, height: 15, cursor: 'pointer', flexShrink: 0 }}
+          />
+        )}
+        <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="Search by name, nickname, or email…"
+          style={{ flex: 1, fontSize: 13 }} />
+      </div>
 
       {/* Summary stats */}
       {students.length > 0 && (
@@ -257,13 +314,18 @@ export default function StudentsTab({ course, password }) {
         </div>
       )}
 
-      {filtered.map(s => {
+      {filtered.map((s, idx) => {
         const avg = s.averageScore ? parseInt(s.averageScore) : null;
         const avgColor = avg >= 85 ? 'var(--green)' : avg >= 70 ? 'var(--amber)' : avg !== null ? 'var(--red)' : 'var(--text3)';
         return (
-          <div key={s.id} className="card card-hover" style={{ marginBottom: 6, padding: '12px 14px' }}
+          <div key={s.id} className="card card-hover" style={{ marginBottom: 6, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}
             onClick={() => setSelected(s)}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <input type="checkbox" checked={checkedIds.has(s.id)}
+              onChange={e => toggleCheck(e, s.id)}
+              onClick={e => e.stopPropagation()}
+              style={{ width: 15, height: 15, cursor: 'pointer', flexShrink: 0 }} />
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <div style={{ fontWeight: 600, fontSize: 14 }}>
                   {s.firstName} {s.lastName}
@@ -297,6 +359,7 @@ export default function StudentsTab({ course, password }) {
             {s.notes && (
               <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 4, fontStyle: 'italic' }}>{s.notes.slice(0, 80)}</div>
             )}
+            </div>
           </div>
         );
       })}
@@ -306,13 +369,25 @@ export default function StudentsTab({ course, password }) {
 
 // ── Student Record Page ──────────────────────────────────────────────────────
 
-function StudentRecord({ student: initialStudent, course, password, onBack }) {
+function StudentRecord({ student: initialStudent, course, password, onBack, allStudents = [], currentIndex = -1, onNavigate }) {
   const [student, setStudent] = useState(initialStudent);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ ...initialStudent });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [generatingInsight, setGeneratingInsight] = useState(false);
+
+  const hasPrev = currentIndex > 0;
+  const hasNext = currentIndex >= 0 && currentIndex < allStudents.length - 1;
+
+  function goTo(idx) {
+    if (idx < 0 || idx >= allStudents.length) return;
+    const s = allStudents[idx];
+    setStudent(s);
+    setForm({ ...s });
+    setEditing(false);
+    onNavigate?.(s);
+  }
 
   const grades = student.grades || [];
   const avg = student.averageScore ? parseInt(student.averageScore) : null;
@@ -359,8 +434,21 @@ function StudentRecord({ student: initialStudent, course, password, onBack }) {
     <div style={{ maxWidth: 720 }}>
       {/* Nav */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <button className="ghost" style={{ fontSize: 12 }} onClick={onBack}>← All students</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button className="ghost" style={{ fontSize: 12 }} onClick={onBack}>← All students</button>
+          {allStudents.length > 1 && (
+            <span style={{ fontSize: 12, color: 'var(--text3)' }}>
+              {currentIndex + 1} of {allStudents.length}
+            </span>
+          )}
+        </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          {allStudents.length > 1 && (
+            <>
+              <button style={{ fontSize: 12, padding: '3px 10px' }} onClick={() => goTo(currentIndex - 1)} disabled={!hasPrev}>← Prev</button>
+              <button style={{ fontSize: 12, padding: '3px 10px' }} onClick={() => goTo(currentIndex + 1)} disabled={!hasNext}>Next →</button>
+            </>
+          )}
           {editing ? (
             <>
               <button className="primary" style={{ fontSize: 12 }} onClick={saveRecord} disabled={saving}>
