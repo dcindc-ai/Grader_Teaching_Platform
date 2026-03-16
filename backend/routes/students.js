@@ -56,21 +56,31 @@ router.post('/roster', (req, res) => {
     const email = (s.email || s.Email || '').trim().toLowerCase();
     if (!fullName) continue;
 
-    const parts = fullName.split(' ');
-    const lastName = parts.pop() || '';
-    const firstName = parts.join(' ') || lastName;
+    // Handle "Last, First" format (Canvas export) — convert to "First Last"
+    let firstName, lastName, displayName;
+    if (fullName.includes(',')) {
+      const [last, ...firstParts] = fullName.split(',').map(p => p.trim());
+      firstName = firstParts.join(' ').trim();
+      lastName = last;
+      displayName = firstName ? `${firstName} ${lastName}` : lastName;
+    } else {
+      const parts = fullName.split(' ');
+      lastName = parts.pop() || '';
+      firstName = parts.join(' ') || lastName;
+      displayName = fullName;
+    }
 
     const existingEmail = email ? checkEmail.get(courseId, email) : null;
-    const existingName = checkName.get(courseId, fullName, firstName, lastName);
+    const existingName = checkName.get(courseId, displayName, firstName, lastName);
 
     if (existingEmail || existingName) {
       const existing = existingEmail || existingName;
-      updateSt.run(firstName, lastName, fullName, email, existing.id);
+      updateSt.run(firstName, lastName, displayName, email, existing.id);
       skipped++;
       continue;
     }
 
-    insertSt.run(uuidv4(), courseId, fullName, firstName, lastName, email);
+    insertSt.run(uuidv4(), courseId, displayName, firstName, lastName, email);
     added++;
   }
 

@@ -35,14 +35,40 @@ export default function StudentsTab({ course, password }) {
     try {
       const text = await file.text();
       const lines = text.trim().split(/\r?\n/);
-      const header = lines[0].toLowerCase().split(',').map(h => h.trim().replace(/"/g,''));
-      const nameIdx = header.findIndex(h => h.includes('name'));
-      const emailIdx = header.findIndex(h => h.includes('email'));
+
+      // Parse header — handle quoted fields
+      function parseCSVLine(line) {
+        const cols = [];
+        let cur = '', inQuote = false;
+        for (let i = 0; i < line.length; i++) {
+          const ch = line[i];
+          if (ch === '"') { inQuote = !inQuote; continue; }
+          if (ch === ',' && !inQuote) { cols.push(cur.trim()); cur = ''; continue; }
+          cur += ch;
+        }
+        cols.push(cur.trim());
+        return cols;
+      }
+
+      const header = parseCSVLine(lines[0]).map(h => h.toLowerCase().replace(/"/g, ''));
+      const nameIdx  = header.findIndex(h => h.includes('student') || h === 'name');
+      const emailIdx = header.findIndex(h => h.includes('email') || h.includes('login'));
 
       const parsed = lines.slice(1)
         .map(line => {
-          const cols = line.split(',').map(c => c.trim().replace(/^"|"$/g, ''));
-          return { name: cols[nameIdx >= 0 ? nameIdx : 0], email: cols[emailIdx >= 0 ? emailIdx : 1] || '' };
+          const cols = parseCSVLine(line);
+          let rawName = cols[nameIdx >= 0 ? nameIdx : 0] || '';
+
+          // Canvas format: "Last, First" — flip to "First Last"
+          let name = rawName;
+          if (rawName.includes(',')) {
+            const [last, ...firstParts] = rawName.split(',').map(s => s.trim());
+            const first = firstParts.join(' ').trim();
+            name = first ? `${first} ${last}` : last;
+          }
+
+          const email = cols[emailIdx >= 0 ? emailIdx : -1] || '';
+          return { name, email };
         })
         .filter(s => s.name && s.name.length > 1);
 
