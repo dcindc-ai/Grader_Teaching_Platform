@@ -28,6 +28,8 @@ export default function DiscussTab({ course, password, session, onSession, assig
       getAssignments(course.id, password).then(setAssignments);
     }
   }, [course.id]);
+
+  async function handleSummary() {
     if (submissions.length < 2) return;
     setSummaryLoading(true);
     setSummary('');
