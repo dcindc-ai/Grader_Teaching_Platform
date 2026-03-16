@@ -397,6 +397,15 @@ router.post('/batch', upload.array('files', 50), async (req, res) => {
         gradeResult.instructor_paragraph || ''
       );
 
+      // Save original PDF for redlined output
+      try {
+        const gradedDir = require('path').join(__dirname, '../uploads/graded');
+        if (!require('fs').existsSync(gradedDir)) require('fs').mkdirSync(gradedDir, { recursive: true });
+        const savedPath = require('path').join(gradedDir, `${gradeId}.pdf`);
+        require('fs').copyFileSync(file.path, savedPath);
+        db.prepare('UPDATE grades SET original_file_path=? WHERE id=?').run(savedPath, gradeId);
+      } catch(e) { console.error('Could not save original PDF:', e.message); }
+
       if (alwaysOn) {
         insertAO.run(
           uuidv4(), gradeId, gradeResult.studentName || 'Unknown',
