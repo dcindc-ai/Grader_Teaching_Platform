@@ -229,6 +229,44 @@ export default function DiscussGrader({ course, password, assignments, question,
     return Object.values(scores).reduce((s, v) => s + (parseFloat(v) || 0), 0);
   }
 
+  const [saving, setSaving] = useState(false);
+  const [savedGrade, setSavedGrade] = useState(false);
+
+  async function saveGrade() {
+    const gradeId = result?.gradeId;
+    if (!gradeId) return;
+    setSaving(true);
+    try {
+      const updatedScores = {};
+      rubricCriteria.forEach(c => { updatedScores[c.name] = scores[c.name] ?? 0; });
+      const criteriaGrades = rubricCriteria.map(c => ({
+        criterionName: c.name,
+        suggestedPoints: scores[c.name] ?? 0,
+        suggestedRating: ratings[c.name] || '',
+        scoringRationale: rationale[c.name]?.scoring || '',
+        studentComment: rationale[c.name]?.student || ''
+      }));
+      await fetch(`${BASE}/api/grade/${gradeId}`, {
+        method: 'PUT',
+        headers: { 'x-admin-password': password, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          studentName,
+          total: getTotal(),
+          scores: updatedScores,
+          comments: criteriaGrades,
+          instructor_paragraph: response,
+          summary: result?.overallSummary || '',
+          key_strength: '',
+          key_improvement: ''
+        })
+      });
+      setSavedGrade(true);
+      setTimeout(() => setSavedGrade(false), 2500);
+      loadGradedList(selectedAssignment?.id);
+    } catch (e) { alert('Save error: ' + e.message); }
+    setSaving(false);
+  }
+
   function totalColor() {
     const p = totalMax ? getTotal() / totalMax : 0;
     return p >= 0.9 ? '#16A34A' : p >= 0.8 ? '#2563EB' : p >= 0.7 ? '#D97706' : '#DC2626';
@@ -649,10 +687,21 @@ export default function DiscussGrader({ course, password, assignments, question,
               </div>
 
               {/* Action buttons */}
-              <button className="primary" style={{ width: '100%', padding: 11, fontSize: 14, fontWeight: 600, marginBottom: 6 }}
-                onClick={() => copy(buildCanvasOutput(), 'all')}>
-                {copied === 'all' ? '✓ Copied — paste into Canvas SpeedGrader' : '📋 Copy all to Canvas'}
-              </button>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                <button
+                  className="primary"
+                  style={{ flex: 1, padding: 11, fontSize: 14, fontWeight: 600,
+                    background: savedGrade ? 'var(--green)' : undefined }}
+                  onClick={saveGrade}
+                  disabled={saving || !result?.gradeId}
+                >
+                  {saving ? 'Saving…' : savedGrade ? '✓ Scores saved' : '💾 Save scores'}
+                </button>
+                <button className="primary" style={{ flex: 2, padding: 11, fontSize: 14, fontWeight: 600 }}
+                  onClick={() => copy(buildCanvasOutput(), 'all')}>
+                  {copied === 'all' ? '✓ Copied — paste into Canvas SpeedGrader' : '📋 Copy all to Canvas'}
+                </button>
+              </div>
               <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
                 <button style={{ flex: 1, fontSize: 12 }} onClick={() => copy(response, 'resp')}>
                   {copied === 'resp' ? '✓' : 'Copy response only'}
