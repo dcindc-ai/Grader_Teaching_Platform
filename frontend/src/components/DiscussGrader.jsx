@@ -51,12 +51,49 @@ export default function DiscussGrader({ course, password, assignments, question,
   const [importingRubric, setImportingRubric] = useState(false);
   const [showRationale, setShowRationale] = useState(false);
   const [showControls, setShowControls] = useState(false);
+  const [gradedList, setGradedList] = useState([]);   // grades for current assignment
+  const [gradedIdx, setGradedIdx] = useState(null);   // which one is loaded
+  const [showGradedPanel, setShowGradedPanel] = useState(true);
   const csvRef = useRef();
 
   useEffect(() => {
     const disc = assignments?.find(a => a.type === 'discussion') || assignments?.[0];
     if (disc) setSelectedAssignment(disc);
   }, [assignments?.length]);
+
+  async function loadGradedList(assignmentId) {
+    if (!assignmentId) return;
+    try {
+      const r = await fetch(`${BASE}/api/grade?courseId=${course.id}&assignmentId=${assignmentId}`);
+      const data = await r.json();
+      setGradedList(Array.isArray(data) ? data : []);
+    } catch (e) {}
+  }
+
+  function loadGradeIntoView(g) {
+    setStudentName(g.studentName || '');
+    setSubmission('');  // original submission not stored — clear it
+    // Reconstruct result shape from saved grade
+    const criteriaGrades = Array.isArray(g.comments)
+      ? g.comments
+      : Object.keys(g.scores || {}).filter(k => k !== 'total').map(k => ({
+          criterionName: k,
+          suggestedPoints: parseFloat(g.scores[k]) || 0,
+          suggestedRating: '',
+          scoringRationale: '',
+          studentComment: ''
+        }));
+    setResult({ criteriaGrades, totalPoints: g.total, totalMax: g.maxScore, overallSummary: g.summary, gradeId: g.id });
+    const initScores = {}, initRatings = {}, initRationale = {};
+    criteriaGrades.forEach(cg => {
+      initScores[cg.criterionName] = cg.suggestedPoints;
+      initRatings[cg.criterionName] = cg.suggestedRating || '';
+      initRationale[cg.criterionName] = { scoring: cg.scoringRationale || '', student: cg.studentComment || '' };
+    });
+    setScores(initScores); setRatings(initRatings); setRationale(initRationale);
+    setResponse(g.instructor_paragraph || '');
+    setSavedAsExample(false); setRefinement('');
+  }
 
   useEffect(() => {
     if (selectedAssignment?.rubricCriteria?.length) {
@@ -68,6 +105,8 @@ export default function DiscussGrader({ course, password, assignments, question,
     }
     setResult(null); setScores({}); setRatings({}); setRationale({});
     setResponse(''); setSavedAsExample(false);
+    setGradedIdx(null);
+    loadGradedList(selectedAssignment?.id);
   }, [selectedAssignment?.id]);
 
   async function importRubricCSV(text) {
@@ -136,6 +175,7 @@ export default function DiscussGrader({ course, password, assignments, question,
       setResponse(d2.reply || '');
 
       onSubmissionGraded?.(studentName, submission);
+      loadGradedList(selectedAssignment?.id);
     } catch (e) { alert('Error: ' + e.message); }
     setGrading(false);
   }
@@ -233,7 +273,87 @@ export default function DiscussGrader({ course, password, assignments, question,
   }
 
   return (
-    <div>
+    <div style={{ display: 'flex', gap: 0, alignItems: 'flex-start' }}>
+
+      {/* Graded students sidebar */}
+      {gradedList.length > 0 && (
+        <div style={{
+          width: showGradedPanel ? 200 : 32, flexShrink: 0, marginRight: 14,
+          border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden',
+          background: '#fff', transition: 'width 0.2s'
+        }}>
+          {/* Sidebar header */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            padding: '8px 10px', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>
+            {showGradedPanel && (
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
+                letterSpacing: '0.07em', color: 'var(--text3)' }}>
+                Graded ({gradedList.length})
+              </div>
+            )}
+            <button onClick={() => setShowGradedPanel(p => !p)}
+              style={{ fontSize: 12, padding: '1px 5px', marginLeft: 'auto' }}
+              title={showGradedPanel ? 'Collapse' : 'Expand'}>
+              {showGradedPanel ? '←' : '→'}
+            </button>
+          </div>
+
+          {showGradedPanel && (
+            <>
+              {/* Prev/Next arrows */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 8px',
+                borderBottom: '1px solid var(--border)' }}>
+                <button style={{ fontSize: 11, padding: '2px 8px' }}
+                  disabled={gradedIdx === null || gradedIdx === 0}
+                  onClick={() => {
+                    const idx = (gradedIdx ?? 0) - 1;
+                    setGradedIdx(idx);
+                    loadGradeIntoView(gradedList[idx]);
+                  }}>↑ Prev</button>
+                <button style={{ fontSize: 11, padding: '2px 8px' }}
+                  disabled={gradedIdx === null ? false : gradedIdx >= gradedList.length - 1}
+                  onClick={() => {
+                    const idx = gradedIdx === null ? 0 : gradedIdx + 1;
+                    setGradedIdx(idx);
+                    loadGradeIntoView(gradedList[idx]);
+                  }}>Next ↓</button>
+              </div>
+
+              {/* Student list */}
+              <div style={{ maxHeight: 480, overflowY: 'auto' }}>
+                {gradedList.map((g, i) => {
+                  const pct = parseFloat(g.total) / parseFloat(g.maxScore);
+                  const col = pct >= 0.85 ? 'var(--green)' : pct >= 0.7 ? 'var(--amber)' : 'var(--red)';
+                  const active = gradedIdx === i;
+                  return (
+                    <div key={g.id}
+                      onClick={() => { setGradedIdx(i); loadGradeIntoView(g); }}
+                      style={{
+                        padding: '8px 10px', cursor: 'pointer', fontSize: 12,
+                        borderBottom: '1px solid var(--bg2)',
+                        background: active ? 'var(--accent-faint, rgba(0,100,200,0.07))' : '#fff',
+                        borderLeft: active ? '3px solid var(--accent)' : '3px solid transparent'
+                      }}
+                      onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--bg2)'; }}
+                      onMouseLeave={e => { if (!active) e.currentTarget.style.background = '#fff'; }}
+                    >
+                      <div style={{ fontWeight: active ? 700 : 500, marginBottom: 2 }}>
+                        {g.studentName}
+                      </div>
+                      <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: col, fontWeight: 600 }}>
+                        {g.total}/{g.maxScore}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Main grader */}
+      <div style={{ flex: 1, minWidth: 0 }}>
       {/* Header row */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -638,6 +758,7 @@ function CompletionGrader({ course, password, assignments }) {
           ))}
         </div>
       )}
-    </div>
+      </div> {/* end main grader */}
+    </div> {/* end flex wrapper */}
   );
 }
