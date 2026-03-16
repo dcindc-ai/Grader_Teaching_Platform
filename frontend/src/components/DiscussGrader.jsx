@@ -758,7 +758,6 @@ function CompletionGrader({ course, password, assignments }) {
           ))}
         </div>
       )}
-      </div>
     </div>
   );
 }
