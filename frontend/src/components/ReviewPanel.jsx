@@ -133,6 +133,8 @@ export default function ReviewPanel({ grade: initialGrade, password, onDelete, o
     setAnnotating(false);
     setTimeout(() => setAnnotateMsg(''), 4000);
   }
+
+  function copyParagraph() {
     navigator.clipboard.writeText(grade.instructor_paragraph || '');
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
