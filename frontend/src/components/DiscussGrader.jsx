@@ -676,6 +676,7 @@ export default function DiscussGrader({ course, password, assignments, question,
         </div>
       </div>
     </div>
+  </div>
   );
 }
 
