@@ -10,6 +10,22 @@ const SECTION_LABELS = {
 };
 const SECTION_MAX = { annotated_product: 2, narrative: 2, context: 1, overall_quality: 1 };
 
+// Derive display sections from actual keys in the grade record
+function getSections(grade) {
+  const scores = grade.scores || {};
+  const comments = grade.comments || {};
+  const keys = [...new Set([
+    ...Object.keys(scores).filter(k => k !== 'total'),
+    ...Object.keys(comments)
+  ])];
+  if (!keys.length) return [];
+  return keys.map(key => ({
+    key,
+    label: SECTION_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+    max: SECTION_MAX[key] || null  // null = derive from total/sections ratio
+  }));
+}
+
 function scoreColor(val, max) {
   const p = parseFloat(val) / max;
   return p >= 0.85 ? 'var(--green)' : p >= 0.6 ? 'var(--amber)' : 'var(--red)';
@@ -140,7 +156,7 @@ export default function ReviewPanel({ grade: initialGrade, password, onDelete, o
     setTimeout(() => setCopied(false), 2000);
   }
 
-  const sectionEntries = Object.entries(SECTION_LABELS);
+  const sections = getSections(grade);
 
   return (
     <div style={{
@@ -211,20 +227,20 @@ export default function ReviewPanel({ grade: initialGrade, password, onDelete, o
           </div>
 
           {/* Score breakdown — editable */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 8, marginBottom: 16 }}>
-            {sectionEntries.map(([key, label]) => {
-              const mx = SECTION_MAX[key] || 1;
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(sections.length, 4)}, 1fr)`, gap: 8, marginBottom: 16 }}>
+            {sections.map(({ key, label, max: mx }) => {
+              const resolvedMax = mx || (parseFloat(grade.maxScore) / sections.length) || 1;
               const val = parseFloat(s[key]) || 0;
               return (
                 <div key={key} style={{ padding: '10px 12px', background: 'var(--bg2)', borderRadius: 8, border: '1px solid var(--border)' }}>
                   <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>{label}</div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <input type="number" value={val} min={0} max={mx} step={0.5}
+                    <input type="number" value={val} min={0} max={resolvedMax} step={0.5}
                       onChange={e => updateScore(key, parseFloat(e.target.value) || 0)}
                       style={{ width: 46, fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 18,
-                        color: scoreColor(val, mx), border: 'none', background: 'transparent',
+                        color: scoreColor(val, resolvedMax), border: 'none', background: 'transparent',
                         outline: 'none', textAlign: 'center', padding: 0 }} />
-                    <span style={{ fontSize: 12, color: 'var(--text2)' }}>/{mx}</span>
+                    <span style={{ fontSize: 12, color: 'var(--text2)' }}>/{resolvedMax}</span>
                   </div>
                 </div>
               );
@@ -258,7 +274,7 @@ export default function ReviewPanel({ grade: initialGrade, password, onDelete, o
           )}
 
           {/* Section comments — editable */}
-          {sectionEntries.map(([key, label]) => {
+          {sections.map(({ key, label }) => {
             const comments = grade.comments?.[key] || [];
             if (!comments.length) return null;
             return (

@@ -549,7 +549,10 @@ router.get('/download', async (req, res) => {
       if(grade.key_strength){y-=4;chk();page.drawText('+ '+grade.key_strength,{x:M,y,size:10,font,color:GREEN});y-=LH;}
       if(grade.key_improvement){chk();page.drawText('→ '+grade.key_improvement,{x:M,y,size:10,font,color:RED});y-=LH;}
 
-      const secs=[['annotated_product','Annotated Product'],['narrative','Narrative'],['context','Context'],['overall_quality','Overall Quality']];
+      const KNOWN_LABELS = {annotated_product:'Annotated Product',narrative:'Narrative',context:'Context',overall_quality:'Overall Quality'};
+      const secs = Object.keys(grade.comments || {})
+        .filter(k => (grade.comments[k] || []).length > 0)
+        .map(k => [k, KNOWN_LABELS[k] || k.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())]);
       for(const[key,label]of secs){
         const comments=grade.comments?.[key]||[];
         if(!comments.length)continue;
