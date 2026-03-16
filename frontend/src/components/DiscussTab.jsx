@@ -6,13 +6,14 @@ const BASE = import.meta.env.PROD ? '' : 'http://localhost:3001';
 
 export default function DiscussTab({ course, password, session, onSession, assignments: propAssignments }) {
   const submissions = session?.submissions || [];
-  const [question, setQuestion] = useState(session?.question || course.discussionDefaultQuestion || '');
+  const [question, setQuestion] = useState(session?.question || '');
   const [editingQ, setEditingQ] = useState(false);
   const [summary, setSummary] = useState('');
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryCopied, setSummaryCopied] = useState(false);
-  const [view, setView] = useState('grade'); // 'grade' | 'summary' | 'students'
+  const [view, setView] = useState('grade');
   const [assignments, setAssignments] = useState(propAssignments || []);
+  const [selectedDiscussAssignment, setSelectedDiscussAssignment] = useState(null);
 
   const [students, setStudents] = useState([]);
 
@@ -24,8 +25,18 @@ export default function DiscussTab({ course, password, session, onSession, assig
   }, [course.id]);
 
   useEffect(() => {
+    const load = (data) => {
+      setAssignments(data);
+      const disc = data.find(a => a.type === 'discussion') || data[0];
+      if (disc && !selectedDiscussAssignment) {
+        setSelectedDiscussAssignment(disc);
+        if (!question) setQuestion(disc.description || course.discussionDefaultQuestion || '');
+      }
+    };
     if (!propAssignments?.length) {
-      getAssignments(course.id, password).then(setAssignments);
+      getAssignments(course.id, password).then(load);
+    } else {
+      load(propAssignments);
     }
   }, [course.id]);
 
@@ -57,7 +68,20 @@ export default function DiscussTab({ course, password, session, onSession, assig
           <div className="page-sub">Grade students · Copy to Canvas · Class summary</div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button style={{ fontSize: 12 }} onClick={() => setEditingQ(e => !e)}>
+          <button style={{ fontSize: 12 }} onClick={async () => {
+            setEditingQ(e => !e);
+            // Save question to assignment description when closing editor
+            if (editingQ && selectedDiscussAssignment && question !== selectedDiscussAssignment.description) {
+              try {
+                await fetch(`${BASE}/api/assignments/${selectedDiscussAssignment.id}`, {
+                  method: 'PUT',
+                  headers: { 'x-admin-password': password, 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ ...selectedDiscussAssignment, description: question })
+                });
+                setSelectedDiscussAssignment(a => ({ ...a, description: question }));
+              } catch (e) {}
+            }
+          }}>
             {editingQ ? 'Done editing' : 'Edit question'}
           </button>
           <button style={{ fontSize: 12 }} onClick={handleNewDiscussion}>+ New discussion</button>
