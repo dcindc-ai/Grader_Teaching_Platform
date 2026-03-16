@@ -143,6 +143,14 @@ RUBRIC:
 ${assignment.rubric}
 
 STRICTNESS (1=lenient, 5=strict): ${sliderStr}
+
+GRADING TARGET:
+- Target class average: ${assignment.target_avg || 4.5} / ${assignment.max_score} points
+- Strictness mode: ${assignment.grading_strictness || 'standard'}
+${assignment.grading_strictness === 'lenient' ? '- Be generous with partial credit. Reward effort and correct direction even if execution is imperfect.' : ''}
+${assignment.grading_strictness === 'strict' ? '- Hold students to a high standard. Partial credit only for work that is substantively correct. Missing elements are deductions.' : ''}
+${assignment.grading_strictness === 'standard' ? '- Grade fairly. Full credit for work that meets all requirements. Partial credit for work that mostly meets requirements.' : ''}
+- If this student\'s work would place the class average significantly above or below the target, adjust scores to reflect actual quality more precisely.
 ${matStr}
 
 GRADING PHILOSOPHY (how this instructor actually grades):

@@ -194,7 +194,8 @@ function parseCourse(r) {
 
 function parseAssignment(r) {
   if (!r) return null;
-  return { id:r.id, courseId:r.course_id, name:r.name, type:r.type,
+  // targetAvg and gradingStrictness
+  return { id:r.id, courseId:r.course_id, name:r.name, type:r.type, targetAvg:r.target_avg||4.5, gradingStrictness:r.grading_strictness||'standard',
     maxScore:r.max_score, order:r.display_order, description:r.description,
     rubric:r.rubric, rubricCriteria:r.rubric_criteria ? JSON.parse(r.rubric_criteria) : null,
     createdAt:r.created_at };
@@ -215,7 +216,7 @@ function parseGrade(r) {
 
 function parseMaterial(r) {
   if (!r) return null;
-  return { id:r.id, courseId:r.course_id, name:r.name, type:r.type,
+  return { id:r.id, courseId:r.course_id, name:r.name, type:r.type, targetAvg:r.target_avg||4.5, gradingStrictness:r.grading_strictness||'standard',
     weekNumber:r.week_number, assignmentId:r.assignment_id, filePath:r.file_path,
     url:r.url, extractedText:r.extracted_text, fileSize:r.file_size,
     status:r.status, version:r.version, uploadedAt:r.uploaded_at };
