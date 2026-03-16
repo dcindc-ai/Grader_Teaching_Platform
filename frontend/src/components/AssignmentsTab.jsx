@@ -176,6 +176,35 @@ export default function AssignmentsTab({ course, password }) {
                     <option value="other">Other</option>
                   </select></div>
               </div>
+
+              {/* Grading target */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+                <div className="field" style={{ margin: 0 }}>
+                  <label>Target avg: <strong>{form.targetAvg ?? 4.5}</strong> / {form.maxScore || 6} pts ({Math.round(((form.targetAvg??4.5)/(form.maxScore||6))*100)}%)</label>
+                  <input type="range" min={0} max={parseFloat(form.maxScore||6)} step={0.5}
+                    value={form.targetAvg ?? 4.5}
+                    onChange={e => setForm(f => ({...f, targetAvg: parseFloat(e.target.value)}))} />
+                  <div style={{ display:'flex', justifyContent:'space-between', fontSize:10, color:'var(--text3)' }}>
+                    <span>Easy</span><span>Standard</span><span>Strict</span>
+                  </div>
+                </div>
+                <div className="field" style={{ margin: 0 }}>
+                  <label>Strictness</label>
+                  <div style={{ display:'flex', gap:6 }}>
+                    {[['lenient','Lenient'],['standard','Standard'],['strict','Strict']].map(([val,label]) => (
+                      <button key={val}
+                        onClick={() => setForm(f => ({...f, gradingStrictness: val}))}
+                        style={{ flex:1, fontSize:11, padding:'5px 4px', fontWeight:600,
+                          background: (form.gradingStrictness||'standard')===val ? 'var(--accent)' : 'var(--bg)',
+                          color: (form.gradingStrictness||'standard')===val ? '#fff' : 'var(--text2)',
+                          border: `1px solid ${(form.gradingStrictness||'standard')===val ? 'var(--accent)' : 'var(--border2)'}` }}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
               <div className="field"><label>Description</label>
                 <textarea rows={8} value={form.description||''} onChange={e => setForm(f=>({...f,description:e.target.value}))} style={{ fontFamily:'var(--mono)',fontSize:12 }} /></div>
               <div className="field"><label>Rubric</label>
