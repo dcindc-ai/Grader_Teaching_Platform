@@ -367,7 +367,6 @@ export default function ReviewPanel({ grade: initialGrade, password, onDelete, o
                 )}
               </div>
             )}
-            </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: 12, color: 'var(--text3)' }}>
                 Graded {new Date(grade.gradedAt).toLocaleDateString()}
