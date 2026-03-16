@@ -3,6 +3,48 @@ const { v4: uuidv4 } = require('uuid');
 const { db } = require('../db');
 const router = express.Router();
 
+function findStudentMatch(students, studentName, fileName) {
+  if (!students.length) return null;
+
+  // Try exact full name match
+  if (studentName && studentName !== 'Unknown') {
+    const exact = students.find(s => (s.name || '').toLowerCase() === studentName.toLowerCase());
+    if (exact) return exact;
+  }
+
+  // Try last name from filename (Canvas format: lastnamefirstname_id_id_Lastname_Assignment)
+  if (fileName) {
+    const base = fileName.replace(/\.[^.]+$/, '');
+    const parts = base.split('_').filter(Boolean);
+    if (parts.length >= 4 && /^\d+$/.test(parts[1]) && /^\d+$/.test(parts[2])) {
+      const lastName = parts[3].toLowerCase();
+      const combined = parts[0].toLowerCase();
+      const firstGuess = combined.startsWith(lastName) ? combined.slice(lastName.length) : '';
+      const match = students.find(s => {
+        const sLast = (s.last_name || '').toLowerCase();
+        const sFirst = (s.first_name || '').toLowerCase();
+        return sLast === lastName && (!firstGuess || sFirst.startsWith(firstGuess[0]));
+      });
+      if (match) return match;
+    }
+  }
+
+  // Try last name from studentName
+  if (studentName && studentName !== 'Unknown') {
+    const parts = studentName.toLowerCase().split(' ');
+    const lastName = parts[parts.length - 1];
+    const firstName = parts[0];
+    const match = students.find(s => {
+      const sLast = (s.last_name || '').toLowerCase();
+      const sFirst = (s.first_name || '').toLowerCase();
+      return sLast === lastName && sFirst.startsWith(firstName[0]);
+    });
+    if (match) return match;
+  }
+
+  return null;
+}
+
 function parseStudent(r) {
   if (!r) return null;
   const firstName = r.first_name || (r.name || '').split(' ').slice(0, -1).join(' ') || r.name || '';
