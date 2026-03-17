@@ -530,10 +530,12 @@ export default function ReviewPanel({ grade: initialGrade, password, onDelete, o
                 Graded {new Date(grade.gradedAt).toLocaleDateString()}
               </span>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button style={{ fontSize: 12, color: 'var(--text2)' }}
-                  onClick={() => setShowRegrade(r => !r)}>
-                  {showRegrade ? 'Cancel regrade' : '↻ Regrade'}
-                </button>
+                {grade.fileName !== 'discussion' && (
+                  <button style={{ fontSize: 12, color: 'var(--text2)' }}
+                    onClick={() => setShowRegrade(r => !r)}>
+                    {showRegrade ? 'Cancel regrade' : '↻ Regrade'}
+                  </button>
+                )}
                 <button className="danger" style={{ fontSize: 12 }} onClick={onDelete}>Delete grade</button>
               </div>
             </div>

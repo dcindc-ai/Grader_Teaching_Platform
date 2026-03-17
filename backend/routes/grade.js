@@ -402,6 +402,45 @@ router.post('/batch', upload.array('files', 50), async (req, res) => {
       }
       const gradeId = uuidv4();
 
+      // Check for existing grade for this student+assignment to avoid duplicates
+      const existingGrade = db.prepare(`
+        SELECT id FROM grades
+        WHERE assignment_id=? AND course_id=? AND (file_name=? OR student_name=?)
+        LIMIT 1
+      `).get(assignmentId, courseId, originalName, gradeResult.studentName || 'Unknown');
+
+      if (existingGrade) {
+        // Update in place rather than creating a duplicate
+        db.prepare(`
+          UPDATE grades SET
+            total=?, scores=?, comments=?, summary=?,
+            key_strength=?, key_improvement=?, instructor_paragraph=?, file_name=?
+          WHERE id=?
+        `).run(
+          gradeResult.scores?.total || 0,
+          JSON.stringify(gradeResult.scores || {}),
+          JSON.stringify(gradeResult.comments || {}),
+          gradeResult.summary || '', gradeResult.key_strength || '', gradeResult.key_improvement || '',
+          gradeResult.instructor_paragraph || '', originalName,
+          existingGrade.id
+        );
+        // Use existing id for downstream operations
+        const updatedGradeId = existingGrade.id;
+        // Copy file path
+        try {
+          const gradedDir = require('path').join(__dirname, '../uploads/graded');
+          if (!require('fs').existsSync(gradedDir)) require('fs').mkdirSync(gradedDir, { recursive: true });
+          const savedPath = require('path').join(gradedDir, `${updatedGradeId}.pdf`);
+          require('fs').copyFileSync(file.path, savedPath);
+          db.prepare('UPDATE grades SET original_file_path=? WHERE id=?').run(savedPath, updatedGradeId);
+        } catch(e) { console.error('Could not save original PDF:', e.message); }
+        const grade = parseGrade(db.prepare('SELECT * FROM grades WHERE id=?').get(updatedGradeId));
+        res.write(`data: ${JSON.stringify({ type:'result', file:originalName, index:i, total:files.length, grade, hasAlwaysOn:false, status:'updated' })}\n\n`);
+        try { fs.unlinkSync(file.path); } catch (e) {}
+        if (i < files.length - 1) await new Promise(r => setTimeout(r, 5000));
+        continue;
+      }
+
       insertGrade.run(
         gradeId, courseId, assignmentId,
         gradeResult.studentName || 'Unknown', assignment.name, originalName,
