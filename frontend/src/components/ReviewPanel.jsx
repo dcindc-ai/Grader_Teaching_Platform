@@ -375,10 +375,15 @@ export default function ReviewPanel({ grade: initialGrade, password, onDelete, o
 
           {/* Recommended Resources (Always-On) */}
           {alwaysOn && (() => {
-            const links = Array.isArray(alwaysOn.links)
-              ? alwaysOn.links
-              : (() => { try { return JSON.parse(alwaysOn.links || '[]'); } catch(e) { return []; } })();
-            const validLinks = links.filter(l => l && l.url);
+            const links = (() => {
+              try {
+                const raw = alwaysOn.links;
+                if (!raw) return [];
+                const parsed = Array.isArray(raw) ? raw : JSON.parse(raw);
+                return Array.isArray(parsed) ? parsed : [];
+              } catch(e) { return []; }
+            })();
+            const validLinks = links.filter(l => l && typeof l === 'object' && l.url);
             const isApproved = alwaysOn.status === 'approved';
             const isRejected = alwaysOn.status === 'rejected';
             return (
