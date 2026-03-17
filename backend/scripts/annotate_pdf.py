@@ -63,13 +63,15 @@ def apply_annotations(input_path, annotations, output_path):
         ay = ph * y_pct
 
         if style == 'box':
-            # Floating text box — wider, used for score summaries
-            box_w = pw * 0.30
-            box_h = 80
+            # Floating text box — size dynamically based on text length
+            chars_per_line = 45
+            lines = max(1, len(text) // chars_per_line + text.count('\n') + 1)
+            box_w = pw * 0.32
+            box_h = max(60, lines * 14 + 20)
             rect = fitz.Rect(ax, ay, ax + box_w, ay + box_h)
             annot = page.add_freetext_annot(
                 rect, text,
-                fontsize=8,
+                fontsize=9,
                 fontname='Helv',
                 text_color=stroke,
                 fill_color=fill,
