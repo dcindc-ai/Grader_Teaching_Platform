@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 const BASE = import.meta.env.PROD ? '' : 'http://localhost:3001';
 
@@ -145,6 +145,8 @@ export default function ReviewPanel({ grade: initialGrade, password, onDelete, o
   const [showRegrade, setShowRegrade] = useState(false);
   const [regradeStrictness, setRegradeStrictness] = useState('standard');
   const [regrading, setRegrading] = useState(false);
+  const [alwaysOn, setAlwaysOn] = useState(initialGrade.alwaysOn || null);
+  const [aoActing, setAoActing] = useState(false);
 
   async function annotateAndDownload(force = false) {
     setAnnotating(true);
@@ -161,6 +163,30 @@ export default function ReviewPanel({ grade: initialGrade, password, onDelete, o
     }
     setAnnotating(false);
     setTimeout(() => setAnnotateMsg(''), 4000);
+  }
+
+  // Load Always-On for this grade if not already present
+  useEffect(() => {
+    if (!alwaysOn && grade.id) {
+      fetch(`${BASE}/api/grade/${grade.id}`, { headers: { 'x-admin-password': password } })
+        .then(r => r.json())
+        .then(d => { if (d.alwaysOn) setAlwaysOn(d.alwaysOn); })
+        .catch(() => {});
+    }
+  }, [grade.id]);
+
+  async function aoAct(status) {
+    if (!alwaysOn) return;
+    setAoActing(true);
+    try {
+      await fetch(`${BASE}/api/alwayson/${alwaysOn.id}`, {
+        method: 'PUT',
+        headers: { 'x-admin-password': password, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, feedbackSentences: alwaysOn.feedbackSentences, links: JSON.stringify(alwaysOn.links || []) })
+      });
+      setAlwaysOn(a => ({ ...a, status }));
+    } catch (e) { alert('Error: ' + e.message); }
+    setAoActing(false);
   }
 
   async function regrade() {
@@ -343,6 +369,54 @@ export default function ReviewPanel({ grade: initialGrade, password, onDelete, o
               </div>
             );
           })}
+
+          {/* Always-On Learning */}
+          {alwaysOn && (
+            <div style={{ marginBottom: 16, padding: '12px 14px', borderRadius: 8,
+              border: `2px solid ${alwaysOn.status === 'approved' ? 'var(--green)' : alwaysOn.status === 'rejected' ? 'var(--border)' : 'var(--accent)'}`,
+              background: alwaysOn.status === 'approved' ? 'rgba(22,163,74,0.05)' : alwaysOn.status === 'rejected' ? 'var(--bg2)' : 'rgba(37,99,235,0.04)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
+                  letterSpacing: '0.08em', color: 'var(--text3)' }}>Always-On Learning</div>
+                <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 600,
+                  background: alwaysOn.status === 'approved' ? 'rgba(22,163,74,0.12)' : alwaysOn.status === 'rejected' ? 'var(--bg3)' : 'rgba(37,99,235,0.1)',
+                  color: alwaysOn.status === 'approved' ? 'var(--green)' : alwaysOn.status === 'rejected' ? 'var(--text3)' : 'var(--accent)' }}>
+                  {alwaysOn.status}
+                </span>
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)', marginBottom: 4 }}>
+                Focus area: {alwaysOn.weakArea}
+              </div>
+              <div style={{ fontSize: 12, lineHeight: 1.6, color: 'var(--text)', marginBottom: 8 }}>
+                {alwaysOn.feedbackSentences}
+              </div>
+              {(alwaysOn.links || []).map((lk, i) => (
+                <div key={i} style={{ fontSize: 11, marginBottom: 4, padding: '5px 8px',
+                  background: '#fff', borderRadius: 5, border: '1px solid var(--border)' }}>
+                  <div style={{ fontWeight: 600, color: 'var(--accent)' }}>{lk.title || lk.url}</div>
+                  {lk.why && <div style={{ color: 'var(--text3)', marginTop: 1 }}>{lk.why}</div>}
+                </div>
+              ))}
+              {alwaysOn.status === 'pending' && (
+                <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+                  <button className="primary" style={{ flex: 1, fontSize: 12 }}
+                    onClick={() => aoAct('approved')} disabled={aoActing}>
+                    ✓ Accept — send to student
+                  </button>
+                  <button style={{ flex: 1, fontSize: 12, color: 'var(--red)' }}
+                    onClick={() => aoAct('rejected')} disabled={aoActing}>
+                    ✕ Reject
+                  </button>
+                </div>
+              )}
+              {alwaysOn.status === 'approved' && (
+                <button style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6 }}
+                  onClick={() => aoAct('rejected')} disabled={aoActing}>
+                  Undo approval
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Resources */}
           <div style={{ marginBottom: 16 }}>

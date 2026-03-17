@@ -480,6 +480,18 @@ router.get('/', (req, res) => {
   res.json(db.prepare(query).all(...params).map(parseGrade));
 });
 
+// GET single grade with its Always-On item
+router.get('/:id', (req, res) => {
+  const grade = parseGrade(db.prepare('SELECT * FROM grades WHERE id=?').get(req.params.id));
+  if (!grade) return res.status(404).json({ error: 'Not found' });
+  const ao = db.prepare('SELECT * FROM always_on WHERE grade_id=? ORDER BY created_at DESC LIMIT 1').get(req.params.id);
+  grade.alwaysOn = ao ? {
+    id: ao.id, status: ao.status, weakArea: ao.weak_area,
+    feedbackSentences: ao.feedback_sentences, links: JSON.parse(ao.links || '[]')
+  } : null;
+  res.json(grade);
+});
+
 router.delete('/:id', (req, res) => {
   db.prepare('DELETE FROM grades WHERE id=?').run(req.params.id);
   res.json({ ok: true });
