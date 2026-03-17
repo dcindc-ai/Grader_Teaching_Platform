@@ -234,10 +234,17 @@ Return ONLY valid JSON, no markdown fences:
 // ─── Generate Always-On recommendations ──────────────────────────────────
 
 async function generateAlwaysOn(client, grade, course, assignment) {
-  const weakAreas = grade.weak_areas || [];
-  if (!weakAreas.length && !grade.key_improvement) return null;
+  const weakAreas = Array.isArray(grade.weak_areas) ? grade.weak_areas : [];
+  const keyImprovement = grade.key_improvement || '';
 
-  const targetArea = weakAreas[0] || grade.key_improvement;
+  // Bail only if truly nothing to work with
+  if (!weakAreas.length && !keyImprovement) {
+    console.log('Always-On skipped: no weak_areas and no key_improvement');
+    return null;
+  }
+
+  const targetArea = weakAreas[0] || keyImprovement;
+  console.log(`Always-On generating for: "${targetArea}"`);
   const courseContext = `${course.full_name} at ${course.institution}`;
 
   // Web search for current resources
@@ -271,7 +278,7 @@ async function generateAlwaysOn(client, grade, course, assignment) {
 Course: ${courseContext}
 Assignment: ${assignment.name}
 Key area to improve: ${targetArea}
-Key improvement note: ${grade.key_improvement}
+Key improvement note: ${keyImprovement}
 Search results: ${JSON.stringify(searchResults).slice(0, 2000)}
 
 Generate:
@@ -436,6 +443,7 @@ router.post('/batch', upload.array('files', 50), async (req, res) => {
 
       // Now create Always-On with the verified name
       if (alwaysOn && finalStudentName !== 'Unknown') {
+        console.log(`Always-On saving for ${finalStudentName}: "${alwaysOn.weakArea}"`);
         insertAO.run(
           uuidv4(), gradeId, finalStudentName,
           courseId, assignmentId, assignment.name,
