@@ -71,7 +71,7 @@ router.get('/docx/:gradeId', async (req, res) => {
       Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
       AlignmentType, HeadingLevel, BorderStyle, WidthType, ShadingType,
       LevelFormat
-    } = require('docx');
+    , ExternalHyperlink} = require('docx');
 
     const BLUE = '2563EB';
     const GREEN = '16A34A';
@@ -319,7 +319,7 @@ router.get('/docx/:gradeId', async (req, res) => {
     if (ao && ao.status === 'approved') {
       const GREEN_AO = '166534';
       children.push(new Paragraph({
-        children: [new TextRun({ text: 'Always-On Learning', bold: true, size: 22, color: GREEN_AO, font: 'Arial' })],
+        children: [new TextRun({ text: 'Recommended Resources', bold: true, size: 22, color: GREEN_AO, font: 'Arial' })],
         spacing: { before: 200, after: 120 }
       }));
       if (ao.weak_area) {
@@ -338,10 +338,18 @@ router.get('/docx/:gradeId', async (req, res) => {
         }));
       }
       const aoLinks = (() => { try { const l = JSON.parse(ao.links || '[]'); return Array.isArray(l) ? l.filter(x => x && x.url) : []; } catch(e) { return []; } })();
-      if (aoLinks.length > 0) {
-        const lk = aoLinks[0];
+      for (const lk of aoLinks.slice(0, 3)) {
+        if (lk.why) {
+          children.push(new Paragraph({
+            children: [new TextRun({ text: lk.why, size: 18, color: '374151', font: 'Arial', italics: true })],
+            spacing: { after: 40 }
+          }));
+        }
         children.push(new Paragraph({
-          children: [new TextRun({ text: (lk.title || lk.url) + (lk.url ? ' — ' + lk.url : ''), size: 18, color: '60A5FA', font: 'Arial' })],
+          children: [new ExternalHyperlink({
+            link: lk.url || '',
+            children: [new TextRun({ text: lk.title || lk.url || '', size: 18, color: '2563EB', font: 'Arial', underline: {} })]
+          })],
           spacing: { after: 80 }
         }));
       }
@@ -601,7 +609,7 @@ router.get('/redlined-pdf/:gradeId', async (req, res) => {
     if (aoR) {
       y -= 8; chk(20);
       page.drawLine({ start:{x:M,y}, end:{x:W-M,y}, thickness:0.5, color:GREEN }); y -= 12;
-      page.drawText('ALWAYS-ON LEARNING', { x:M, y, size:9, font:bold, color:GREEN }); y -= 14;
+      page.drawText('RECOMMENDED RESOURCES', { x:M, y, size:9, font:bold, color:GREEN }); y -= 14;
       if (aoR.feedback_sentences) { wrap(aoR.feedback_sentences, {size:10, color:BLACK}); y -= 6; }
       const aoLinks = (() => { try { const l = JSON.parse(aoR.links || '[]'); return Array.isArray(l) ? l.filter(x => x && x.url) : []; } catch(e) { return []; } })();
       if (aoLinks.length > 0) {
