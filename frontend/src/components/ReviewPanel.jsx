@@ -426,10 +426,24 @@ export default function ReviewPanel({ grade: initialGrade, password, onDelete, o
                   </div>
                 )}
                 {alwaysOn.status === 'approved' && (
-                  <button style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6 }}
-                    onClick={() => aoAct('rejected')} disabled={aoActing}>
-                    Undo approval
-                  </button>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                    <button style={{ fontSize: 11, color: 'var(--text3)' }}
+                      onClick={() => aoAct('rejected')} disabled={aoActing}>
+                      ✕ Reject
+                    </button>
+                  </div>
+                )}
+                {alwaysOn.status === 'rejected' && (
+                  <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+                    <button className="primary" style={{ flex: 1, fontSize: 12 }}
+                      onClick={() => aoAct('approved')} disabled={aoActing}>
+                      ✓ Accept — include in feedback
+                    </button>
+                    <button style={{ fontSize: 12, color: 'var(--text3)' }}
+                      onClick={() => aoAct('pending')} disabled={aoActing}>
+                      Reset to pending
+                    </button>
+                  </div>
                 )}
               </div>
             );
