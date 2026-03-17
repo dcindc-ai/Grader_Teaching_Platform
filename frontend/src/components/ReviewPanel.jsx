@@ -264,9 +264,9 @@ export default function ReviewPanel({ grade: initialGrade, password, onDelete, o
                 <div key={key} style={{ padding: '10px 12px', background: 'var(--bg2)', borderRadius: 8, border: '1px solid var(--border)' }}>
                   <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>{label}</div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <input type="number" value={val} min={0} max={mx} step={0.5}
+                    <input type="number" value={val} min={0} max={mx} step={0.1}
                       onChange={e => updateScore(key, parseFloat(e.target.value) || 0)}
-                      style={{ width: 46, fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 18,
+                      style={{ width: 62, fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 18,
                         color: scoreColor(val, mx), border: 'none', background: 'transparent',
                         outline: 'none', textAlign: 'center', padding: 0 }} />
                     <span style={{ fontSize: 12, color: 'var(--text2)' }}>/{mx}</span>
