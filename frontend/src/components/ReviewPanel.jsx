@@ -390,7 +390,7 @@ export default function ReviewPanel({ grade: initialGrade, password, onDelete, o
               <div style={{ fontSize: 12, lineHeight: 1.6, color: 'var(--text)', marginBottom: 8 }}>
                 {alwaysOn.feedbackSentences}
               </div>
-              {(alwaysOn.links || []).map((lk, i) => (
+              {(Array.isArray(alwaysOn.links) ? alwaysOn.links : JSON.parse(alwaysOn.links || '[]')).map((lk, i) => (
                 <div key={i} style={{ fontSize: 11, marginBottom: 4, padding: '5px 8px',
                   background: '#fff', borderRadius: 5, border: '1px solid var(--border)' }}>
                   <div style={{ fontWeight: 600, color: 'var(--accent)' }}>{lk.title || lk.url}</div>

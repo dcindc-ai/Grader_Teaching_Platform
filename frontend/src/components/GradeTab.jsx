@@ -22,8 +22,8 @@ export default function GradeTab({ course, password, activeAssignmentId, queue, 
   useEffect(() => {
     getAssignments(course.id, password).then(a => {
       setAssignments(a);
-      if (activeAssignmentId) setSelectedIdPersist(activeAssignmentId);
-      else if (a.length && !localStorage.getItem(storageKey)) setSelectedIdPersist(a[0].id);
+      if (activeAssignmentId) setSelectedId(activeAssignmentId);
+      else if (a.length) setSelectedId(a[0].id);
     });
   }, [course.id]);
 
@@ -87,7 +87,7 @@ export default function GradeTab({ course, password, activeAssignmentId, queue, 
           <div className="page-title">Grade</div>
           <div className="page-sub">Upload submissions · Review feedback · Copy to Canvas</div>
         </div>
-        <select value={selectedId} onChange={e => setSelectedIdPersist(e.target.value)}
+        <select value={selectedId} onChange={e => setSelectedId(e.target.value)}
           style={{ fontSize: 13, fontWeight: 500, width: 160 }}>
           {assignments.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
         </select>
