@@ -71,6 +71,14 @@ export default function ReviewPanel({ grade: initialGrade, password, onDelete, o
     setSaved(false);
   }
 
+  function deleteComment(section, idx) {
+    const comments = { ...(grade.comments || {}) };
+    if (!comments[section]) return;
+    comments[section] = comments[section].filter((_, i) => i !== idx);
+    setGrade(g => ({ ...g, comments }));
+    setSaved(false);
+  }
+
   async function saveChanges() {
     setSaving(true);
     try {
@@ -295,6 +303,14 @@ export default function ReviewPanel({ grade: initialGrade, password, onDelete, o
                       <input type="text" value={c.text || ''}
                         onChange={e => updateComment(key, i, 'text', e.target.value)}
                         style={{ flex: 1, fontSize: 12 }} />
+                      <button
+                        onClick={() => deleteComment(key, i)}
+                        title="Remove this comment"
+                        style={{ fontSize: 11, padding: '2px 6px', color: 'var(--text3)',
+                          border: '1px solid var(--border)', borderRadius: 4, flexShrink: 0,
+                          background: 'transparent', cursor: 'pointer' }}>
+                        ✕
+                      </button>
                     </div>
                     {c.type !== 'positive' && (
                       <input type="text" value={c.rewrite || ''}
