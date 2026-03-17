@@ -390,7 +390,7 @@ router.post('/batch', upload.array('files', 50), async (req, res) => {
       let gradeResult, alwaysOn;
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
-          ({ gradeResult, alwaysOn } = await gradeOne(file.path, assignment, course, files.length > 3));
+          ({ gradeResult, alwaysOn } = await gradeOne(file.path, assignment, course, false));
           break;
         } catch (e) {
           if (e.message.includes('429') && attempt < 2) {
@@ -454,8 +454,8 @@ router.post('/batch', upload.array('files', 50), async (req, res) => {
         console.log(`Skipped Always-On for unresolved student in file: ${originalName}`);
       }
 
-      // Delay between files to respect rate limits (30k tokens/min)
-      if (i < files.length - 1) await new Promise(r => setTimeout(r, 3000));
+      // Delay between files to respect rate limits (Always-On web search adds extra calls)
+      if (i < files.length - 1) await new Promise(r => setTimeout(r, 5000));
 
       const grade = parseGrade(db.prepare('SELECT * FROM grades WHERE id=?').get(gradeId));
       res.write(`data: ${JSON.stringify({ type:'result', file:originalName, index:i, total:files.length, grade, hasAlwaysOn:!!alwaysOn, status:'done' })}\n\n`);
