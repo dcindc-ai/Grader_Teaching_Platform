@@ -124,6 +124,39 @@ export default function AlwaysOnTab({ course, password }) {
   }
 
   const studentItems = items.filter(x => x.studentName !== 'Class');
+  const [backfilling, setBackfilling] = useState(false);
+  const [backfillLog, setBackfillLog] = useState([]);
+
+  async function runBackfill() {
+    setBackfilling(true);
+    setBackfillLog([]);
+    try {
+      const r = await fetch(`${BASE}/api/grade/backfill-always-on?courseId=${course.id}`, {
+        method: 'POST', headers: { 'x-admin-password': password }
+      });
+      const reader = r.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value);
+        const lines = buf.split('\n\n');
+        buf = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data:')) continue;
+          const evt = JSON.parse(line.slice(5).trim());
+          if (evt.type === 'progress') {
+            setBackfillLog(l => [...l, `${evt.student}: ${evt.status}`]);
+          } else if (evt.type === 'complete') {
+            setBackfillLog(l => [...l, `Done — ${evt.generated} of ${evt.total} generated`]);
+            getItems(course.id, filter, password).then(setItems);
+          }
+        }
+      }
+    } catch (e) { setBackfillLog(l => [...l, 'Error: ' + e.message]); }
+    setBackfilling(false);
+  }
 
   return (
     <div>
@@ -133,6 +166,9 @@ export default function AlwaysOnTab({ course, password }) {
           <div className="page-sub">Review recommendations before they go to students</div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={runBackfill} disabled={backfilling} style={{ fontSize: 12 }}>
+            {backfilling ? '⏳ Generating…' : '⚡ Generate for existing grades'}
+          </button>
           <button onClick={handleClassSummary} disabled={generatingSummary || approved === 0}
             style={{ fontSize: 12 }}>
             {generatingSummary ? 'Generating…' : '✦ Class summary'}
@@ -143,6 +179,14 @@ export default function AlwaysOnTab({ course, password }) {
           </button>
         </div>
       </div>
+
+      {/* Backfill progress log */}
+      {backfillLog.length > 0 && (
+        <div className="card" style={{ marginBottom: 14, fontFamily: 'var(--mono)', fontSize: 11,
+          maxHeight: 160, overflowY: 'auto', color: 'var(--text2)' }}>
+          {backfillLog.map((line, i) => <div key={i}>{line}</div>)}
+        </div>
+      )}
 
       {/* Class summary panel */}
       {showSummary && classSummary && (

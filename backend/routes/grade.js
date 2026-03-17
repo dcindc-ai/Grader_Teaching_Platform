@@ -719,3 +719,78 @@ router.post('/:id/regrade', async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+
+// POST /api/grade/backfill-always-on?courseId=X
+// Generates Always-On for all grades in a course that don't have one yet
+router.post('/backfill-always-on', async (req, res) => {
+  const { courseId } = req.query;
+  if (!courseId) return res.status(400).json({ error: 'courseId required' });
+
+  const course = db.prepare('SELECT * FROM courses WHERE id=?').get(courseId);
+  if (!course) return res.status(404).json({ error: 'Course not found' });
+
+  // Find grades with no Always-On item and a key_improvement to work from
+  const grades = db.prepare(`
+    SELECT g.* FROM grades g
+    LEFT JOIN always_on ao ON ao.grade_id = g.id
+    WHERE g.course_id = ?
+      AND ao.id IS NULL
+      AND (g.key_improvement IS NOT NULL AND g.key_improvement != '')
+      AND (g.student_name IS NOT NULL AND g.student_name != 'Unknown')
+  `).all(courseId);
+
+  if (!grades.length) return res.json({ message: 'No eligible grades found', generated: 0 });
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+
+  const { v4: uuidv4 } = require('uuid');
+  const Anthropic = require('@anthropic-ai/sdk');
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const insertAO = db.prepare(`
+    INSERT INTO always_on (id,grade_id,student_name,course_id,assignment_id,assignment_name,weak_area,feedback_sentences,links)
+    VALUES (?,?,?,?,?,?,?,?,?)
+  `);
+
+  let generated = 0;
+  for (let i = 0; i < grades.length; i++) {
+    const grade = grades[i];
+    const assignment = db.prepare('SELECT * FROM assignments WHERE id=?').get(grade.assignment_id);
+
+    res.write(`data: ${JSON.stringify({ type: 'progress', index: i, total: grades.length, student: grade.student_name, status: 'generating' })}\n\n`);
+
+    try {
+      const gradeObj = {
+        studentName: grade.student_name,
+        key_improvement: grade.key_improvement,
+        weak_areas: [],
+      };
+
+      const alwaysOn = await generateAlwaysOn(client, gradeObj, course, assignment || { name: grade.assignment_name });
+
+      if (alwaysOn) {
+        // Find student_id for this grade
+        const studentId = grade.student_id;
+        insertAO.run(
+          uuidv4(), grade.id, grade.student_name,
+          courseId, grade.assignment_id, grade.assignment_name,
+          alwaysOn.weakArea, alwaysOn.feedbackSentences,
+          JSON.stringify(alwaysOn.links || [])
+        );
+        generated++;
+        res.write(`data: ${JSON.stringify({ type: 'progress', index: i, total: grades.length, student: grade.student_name, status: 'done' })}\n\n`);
+      } else {
+        res.write(`data: ${JSON.stringify({ type: 'progress', index: i, total: grades.length, student: grade.student_name, status: 'skipped' })}\n\n`);
+      }
+    } catch (e) {
+      console.error(`Always-On backfill error [${grade.student_name}]:`, e.message);
+      res.write(`data: ${JSON.stringify({ type: 'progress', index: i, total: grades.length, student: grade.student_name, status: 'error', error: e.message })}\n\n`);
+    }
+
+    if (i < grades.length - 1) await new Promise(r => setTimeout(r, 4000));
+  }
+
+  res.write(`data: ${JSON.stringify({ type: 'complete', generated, total: grades.length })}\n\n`);
+  res.end();
+});
