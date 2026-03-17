@@ -314,6 +314,49 @@ router.get('/docx/:gradeId', async (req, res) => {
       }
     }
 
+    // Always-On Learning section
+    const ao = db.prepare('SELECT * FROM always_on WHERE grade_id=? ORDER BY created_at DESC LIMIT 1').get(grade.id);
+    if (ao && ao.status === 'approved') {
+      const GREEN_AO = '166534';
+      children.push(new Paragraph({
+        children: [new TextRun({ text: 'Always-On Learning', bold: true, size: 22, color: GREEN_AO, font: 'Arial' })],
+        spacing: { before: 200, after: 120 }
+      }));
+      if (ao.weak_area) {
+        children.push(new Paragraph({
+          children: [
+            new TextRun({ text: 'Focus area: ', bold: true, size: 20, color: '374151', font: 'Arial' }),
+            new TextRun({ text: ao.weak_area, size: 20, color: '374151', font: 'Arial' })
+          ],
+          spacing: { after: 80 }
+        }));
+      }
+      if (ao.feedback_sentences) {
+        children.push(new Paragraph({
+          children: [new TextRun({ text: ao.feedback_sentences, size: 20, color: '111827', font: 'Arial' })],
+          spacing: { after: 120 }
+        }));
+      }
+      const aoLinks = JSON.parse(ao.links || '[]');
+      for (const lk of aoLinks) {
+        children.push(new Table({
+          width: { size: 9360, type: WidthType.DXA }, columnWidths: [9360],
+          rows: [new TableRow({ children: [new TableCell({
+            borders: { ...noBorders, left: { style: BorderStyle.SINGLE, size: 12, color: GREEN_AO, space: 0 } },
+            width: { size: 9360, type: WidthType.DXA },
+            shading: { fill: 'F0FDF4', type: ShadingType.CLEAR },
+            margins: { top: 80, bottom: 80, left: 160, right: 120 },
+            children: [
+              new Paragraph({ children: [new TextRun({ text: lk.title || lk.url, bold: true, size: 20, color: GREEN_AO, font: 'Arial' })], spacing: { after: 40 } }),
+              lk.why ? new Paragraph({ children: [new TextRun({ text: lk.why, size: 18, color: '6B7280', font: 'Arial' })], spacing: { after: 40 } }) : new Paragraph({}),
+              new Paragraph({ children: [new TextRun({ text: lk.url || '', size: 16, color: '60A5FA', font: 'Arial' })] })
+            ]
+          })] })]
+        }));
+        children.push(new Paragraph({ spacing: { after: 80 } }));
+      }
+    }
+
     // Footer
     children.push(new Paragraph({
       border: { top: { style: BorderStyle.SINGLE, size: 2, color: 'E5E7EB', space: 1 } },
@@ -561,6 +604,24 @@ router.get('/redlined-pdf/:gradeId', async (req, res) => {
         if (r.why) { page.drawText(sanitize(r.why), { x:M+8, y, size:9, font, color:GRAY }); y -= LH; }
         page.drawText(sanitize(r.url), { x:M+8, y, size:8, font, color:BLUE }); y -= LH + 8;
       }
+    }
+
+    // Always-On Learning
+    const aoR = db.prepare('SELECT * FROM always_on WHERE grade_id=? AND status=? ORDER BY created_at DESC LIMIT 1').get(grade.id, 'approved');
+    if (aoR) {
+      y -= 8; chk(20);
+      page.drawLine({ start:{x:M,y}, end:{x:W-M,y}, thickness:0.5, color:GREEN }); y -= 12;
+      page.drawText('ALWAYS-ON LEARNING', { x:M, y, size:9, font:bold, color:GREEN }); y -= 14;
+      if (aoR.weak_area) { wrap('Focus: ' + aoR.weak_area, {size:9, color:GRAY, f:italic}); }
+      if (aoR.feedback_sentences) { wrap(aoR.feedback_sentences, {size:10, color:BLACK}); y -= 4; }
+      const aoLinks = JSON.parse(aoR.links || '[]');
+      for (const lk of aoLinks) {
+        chk(28);
+        wrap('• ' + (lk.title || lk.url), {size:10, color:BLUE, f:bold});
+        if (lk.why) wrap('  ' + lk.why, {size:9, color:GRAY});
+        y -= 4;
+      }
+      y -= 6;
     }
 
     chk(20); rule();
