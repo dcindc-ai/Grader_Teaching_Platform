@@ -142,6 +142,9 @@ export default function ReviewPanel({ grade: initialGrade, password, onDelete, o
 
   const [annotating, setAnnotating] = useState(false);
   const [annotateMsg, setAnnotateMsg] = useState('');
+  const [showRegrade, setShowRegrade] = useState(false);
+  const [regradeStrictness, setRegradeStrictness] = useState('standard');
+  const [regrading, setRegrading] = useState(false);
 
   async function annotateAndDownload(force = false) {
     setAnnotating(true);
@@ -158,6 +161,23 @@ export default function ReviewPanel({ grade: initialGrade, password, onDelete, o
     }
     setAnnotating(false);
     setTimeout(() => setAnnotateMsg(''), 4000);
+  }
+
+  async function regrade() {
+    setRegrading(true);
+    try {
+      const r = await fetch(`${BASE}/api/grade/${grade.id}/regrade`, {
+        method: 'POST',
+        headers: { 'x-admin-password': password, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ strictness: regradeStrictness })
+      });
+      const updated = await r.json();
+      if (updated.error) throw new Error(updated.error);
+      setGrade(g => ({ ...g, ...updated }));
+      onUpdate?.(updated);
+      setShowRegrade(false);
+    } catch (e) { alert('Regrade error: ' + e.message); }
+    setRegrading(false);
   }
 
   function copyParagraph() {
@@ -400,12 +420,53 @@ export default function ReviewPanel({ grade: initialGrade, password, onDelete, o
                 )}
               </div>
             )}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
               <span style={{ fontSize: 12, color: 'var(--text3)' }}>
                 Graded {new Date(grade.gradedAt).toLocaleDateString()}
               </span>
-              <button className="danger" style={{ fontSize: 12 }} onClick={onDelete}>Delete grade</button>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button style={{ fontSize: 12, color: 'var(--text2)' }}
+                  onClick={() => setShowRegrade(r => !r)}>
+                  {showRegrade ? 'Cancel regrade' : '↻ Regrade'}
+                </button>
+                <button className="danger" style={{ fontSize: 12 }} onClick={onDelete}>Delete grade</button>
+              </div>
             </div>
+
+            {showRegrade && (
+              <div style={{ marginTop: 10, padding: '12px 14px', background: 'var(--bg2)',
+                borderRadius: 8, border: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10 }}>
+                  Regrade with different strictness
+                </div>
+                <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+                  {[
+                    { val: 'lenient', label: 'More lax', desc: 'Generous with partial credit' },
+                    { val: 'standard', label: 'Standard', desc: 'Grade as written' },
+                    { val: 'strict', label: 'More strict', desc: 'Higher bar for full credit' },
+                  ].map(({ val, label, desc }) => (
+                    <div key={val}
+                      onClick={() => setRegradeStrictness(val)}
+                      style={{
+                        flex: 1, padding: '8px 10px', borderRadius: 6, cursor: 'pointer',
+                        border: `2px solid ${regradeStrictness === val ? 'var(--accent)' : 'var(--border)'}`,
+                        background: regradeStrictness === val ? 'var(--accent-faint, rgba(0,100,200,0.06))' : '#fff'
+                      }}>
+                      <div style={{ fontSize: 12, fontWeight: 700,
+                        color: regradeStrictness === val ? 'var(--accent)' : 'var(--text)' }}>{label}</div>
+                      <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>{desc}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 10 }}>
+                  Claude will re-read the original submission and grade it fresh. Current scores and comments will be replaced.
+                </div>
+                <button className="primary" style={{ width: '100%', fontSize: 13 }}
+                  onClick={regrade} disabled={regrading}>
+                  {regrading ? '⏳ Regrading…' : `Regrade as ${regradeStrictness}`}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

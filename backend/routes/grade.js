@@ -660,3 +660,54 @@ router.put('/:id', (req, res) => {
 
   res.json(parseGrade(db.prepare('SELECT * FROM grades WHERE id=?').get(req.params.id)));
 });
+
+// POST /api/grade/:id/regrade — regrade with strictness override
+router.post('/:id/regrade', async (req, res) => {
+  const { strictness } = req.body; // 'lenient' | 'standard' | 'strict'
+  const gradeRow = db.prepare('SELECT * FROM grades WHERE id=?').get(req.params.id);
+  if (!gradeRow) return res.status(404).json({ error: 'Grade not found' });
+
+  const originalPath = gradeRow.original_file_path;
+  if (!originalPath || !fs.existsSync(originalPath)) {
+    return res.status(400).json({
+      error: 'Original submission file not found. Regrade is only available for submissions graded after file storage was added.'
+    });
+  }
+
+  const assignment = db.prepare('SELECT * FROM assignments WHERE id=?').get(gradeRow.assignment_id);
+  const course     = db.prepare('SELECT * FROM courses WHERE id=?').get(gradeRow.course_id);
+  if (!assignment || !course) return res.status(400).json({ error: 'Assignment or course not found' });
+
+  // Override strictness on a copy of the assignment
+  const assignmentOverride = { ...assignment, grading_strictness: strictness || 'standard' };
+
+  try {
+    const { gradeResult } = await gradeOne(originalPath, assignmentOverride, course, true);
+
+    // Update grade record in place
+    db.prepare(`
+      UPDATE grades SET
+        total=?, scores=?, comments=?, summary=?,
+        key_strength=?, key_improvement=?, instructor_paragraph=?
+      WHERE id=?
+    `).run(
+      gradeResult.scores?.total || 0,
+      JSON.stringify(gradeResult.scores || {}),
+      JSON.stringify(gradeResult.comments || {}),
+      gradeResult.summary || '',
+      gradeResult.key_strength || '',
+      gradeResult.key_improvement || '',
+      gradeResult.instructor_paragraph || '',
+      req.params.id
+    );
+
+    // Clear any cached annotated PDF since scores changed
+    const annotatedPath = require('path').join(__dirname, '../uploads/annotated', `${req.params.id}_annotated.pdf`);
+    if (fs.existsSync(annotatedPath)) fs.unlinkSync(annotatedPath);
+
+    res.json(parseGrade(db.prepare('SELECT * FROM grades WHERE id=?').get(req.params.id)));
+  } catch (e) {
+    console.error('Regrade error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
