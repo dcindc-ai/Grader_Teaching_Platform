@@ -145,34 +145,20 @@ ${assignment.rubric}
 STRICTNESS (1=lenient, 5=strict): ${sliderStr}
 
 GRADING TARGET:
-- Target class average: ${assignment.target_avg || 4.5} / ${assignment.max_score} points
-- Strictness mode: ${assignment.grading_strictness || 'standard'}
-${assignment.grading_strictness === 'lenient' ? '- Be generous with partial credit. Reward effort and correct direction even if execution is imperfect.' : ''}
-${assignment.grading_strictness === 'strict' ? '- Hold students to a high standard. Partial credit only for work that is substantively correct. Missing elements are deductions.' : ''}
-${assignment.grading_strictness === 'standard' ? '- Grade fairly. Full credit for work that meets all requirements. Partial credit for work that mostly meets requirements.' : ''}
+- Target class average: \${assignment.target_avg || 4.5} / \${assignment.max_score} points
+- Strictness mode: \${assignment.grading_strictness || 'standard'}
+\${assignment.grading_strictness === 'lenient' ? '- Be generous with partial credit. Reward effort and correct direction even if execution is imperfect.' : ''}
+\${assignment.grading_strictness === 'strict' ? '- Hold students to a high standard. Partial credit only for work that is substantively correct. Missing elements are deductions.' : ''}
+\${assignment.grading_strictness === 'standard' ? '- Grade fairly. Full credit for work that meets all requirements. Partial credit for work that mostly meets requirements.' : ''}
 - If this student\'s work would place the class average significantly above or below the target, adjust scores to reflect actual quality more precisely.
-\${assignment.grading_guidance ? \`
-INSTRUCTOR GUIDANCE FOR THIS ASSIGNMENT (these instructions override default rubric behavior — follow them exactly):
-\${assignment.grading_guidance}
-\` : ''}
-\${assignment.grading_override ? \`
-INSTRUCTOR OVERRIDE FOR THIS STUDENT ONLY (apply only to this submission):
-\${assignment.grading_override}
-\` : ''}
 \${matStr}
 
-DO NOT PENALIZE LIST (MANDATORY — these override everything else):
-${assignment.grading_guidance ? assignment.grading_guidance.split('\n').filter(l => l.trim()).map(l => l.startsWith('-') ? l : '- ' + l).join('\n') : '(none set — add guidance in assignment settings)'}
-
-${assignment.grading_override ? `OVERRIDE FOR THIS STUDENT ONLY:
-${assignment.grading_override}
-` : ''}
-GRADING PHILOSOPHY (how this instructor actually grades — only apply if relevant to this course and assignment):
+GRADING PHILOSOPHY (how this instructor actually grades):
 ${course.institution && course.institution.toLowerCase().includes('maryland') ? `
 WHAT A 6 LOOKS LIKE:
-- Opens with a clear, declarative significance statement — the reader immediately knows what they are looking at and why it matters
+- Opens with a clear, declarative significance statement
 - Annotated product contains all core elements: legend, north arrow, preferably a neatline
-- Student does not just label objects — they explain what each labeled object tells them and how they drew that conclusion
+- Student explains what each labeled object tells them and how they drew that conclusion
 - The work reads like it was made for a decision-maker, not a checklist
 
 WHAT A 4 LOOKS LIKE:
@@ -180,21 +166,27 @@ WHAT A 4 LOOKS LIKE:
 - Does not answer the core question: why should I care about this?
 - No synthesis, no decision-relevant conclusion, just inventory
 
-AUTOMATIC DEDUCTIONS (apply regardless of other quality):
-- Missing legend on annotated product: -0.5 pts minimum
-- Missing north arrow or direction indicator: -0.5 pts
+AUTOMATIC DEDUCTIONS:
+- Missing legend on annotated product: -0.5 pts
+- Missing north arrow: -0.5 pts
 - Spelling errors: -0.5 pts per instance
 - First person language (I, we, my): flag and deduct
 
-GEOINT STANDARD: The student must demonstrate both empirical discipline (what the evidence shows) and logical argumentation (what conclusions follow).
+GEOINT STANDARD: Students must demonstrate empirical discipline (what the evidence shows) and logical argumentation (what conclusions follow).
 COLORBLIND ACCESSIBILITY: Red/green color combinations affect ~8% of males. Flag if used.
 ` : `
-Grade based strictly on the rubric provided above. Apply the rubric criteria as written.
-Do not import grading standards from other courses or disciplines.
-Focus only on what the rubric asks for — nothing more, nothing less.
+Grade based strictly on the rubric provided above. Apply only what the rubric asks for.
+Do not import grading standards or expectations from other courses or disciplines.
 `}
-REWRITE SUGGESTIONS: For every flagged narrative sentence, provide a concrete rewrite showing what the sentence should say.
 
+INSTRUCTOR EXCEPTIONS — DO NOT PENALIZE FOR THESE (carve-outs from the rubric only, everything else still applies):
+${assignment.grading_guidance
+  ? assignment.grading_guidance.split('\n').filter(l => l.trim()).map(l => l.startsWith('-') ? l : '- ' + l).join('\n')
+  : '- (none — add exceptions in assignment settings if needed)'}
+${assignment.grading_override ? `
+ADDITIONAL EXCEPTION FOR THIS STUDENT ONLY:
+${assignment.grading_override}
+` : ''}
 CALIBRATION EXAMPLES:
 ${exStr}
 
