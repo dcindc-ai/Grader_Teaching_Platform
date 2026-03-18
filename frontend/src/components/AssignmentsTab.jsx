@@ -210,19 +210,22 @@ export default function AssignmentsTab({ course, password }) {
               <div className="field"><label>Rubric</label>
                 <textarea rows={12} value={form.rubric||''} onChange={e => setForm(f=>({...f,rubric:e.target.value}))} style={{ fontFamily:'var(--mono)',fontSize:12 }} /></div>
               <div className="field">
-                <label>Grading guidance <span style={{ fontWeight:400, color:'var(--text3)', fontSize:11 }}>— instructor overrides injected into every grade for this assignment</span></label>
+                <label>DO NOT PENALIZE <span style={{ fontWeight:400, color:'var(--red)', fontSize:11 }}>— Claude will follow these as hard rules overriding the rubric</span></label>
                 <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:8 }}>
                   {[
-                    "Don't penalize for bullet point format — narrative structure is covered later",
-                    "Don't deduct for missing north arrow — not yet taught",
-                    "Don't deduct for missing legend — not yet covered",
-                    "Be lenient on source citations — first intelligence product",
-                    "Don't penalize colorblind accessibility issues — not yet taught",
+                    "Students only need to cite ONE of the required readings, not all of them",
+                    "Students choose ONE category or option — do not penalize for not addressing both",
+                    "Do not penalize for bullet point format",
+                    "Do not deduct for missing north arrow — not yet taught",
+                    "Do not deduct for missing legend — not yet covered",
+                    "Do not penalize for missing source citations on this assignment",
+                    "Do not penalize colorblind color choices — not yet taught",
+                    "Do not penalize for first-person language on this assignment",
                   ].map(t => (
                     <button key={t} style={{ fontSize:11, padding:'3px 8px', borderRadius:4,
-                      background: (form.gradingGuidance||'').includes(t) ? 'rgba(37,99,235,0.1)' : 'var(--bg2)',
-                      color: (form.gradingGuidance||'').includes(t) ? 'var(--accent)' : 'var(--text3)',
-                      border: `1px solid ${(form.gradingGuidance||'').includes(t) ? 'var(--accent)' : 'var(--border)'}` }}
+                      background: (form.gradingGuidance||'').includes(t) ? 'rgba(220,38,38,0.1)' : 'var(--bg2)',
+                      color: (form.gradingGuidance||'').includes(t) ? 'var(--red)' : 'var(--text3)',
+                      border: `1px solid ${(form.gradingGuidance||'').includes(t) ? 'var(--red)' : 'var(--border)'}` }}
                       onClick={() => {
                         const cur = form.gradingGuidance || '';
                         if (cur.includes(t)) {
@@ -236,8 +239,8 @@ export default function AssignmentsTab({ course, password }) {
                   ))}
                 </div>
                 <textarea rows={4} value={form.gradingGuidance||''} onChange={e => setForm(f=>({...f,gradingGuidance:e.target.value}))}
-                  placeholder="Add any specific guidance for Claude when grading this assignment. These override default rubric behavior."
-                  style={{ fontSize:12, lineHeight:1.6 }} />
+                  placeholder="e.g. — Students only need to cite one reading&#10;— Do not penalize for missing north arrow&#10;— Students choose one risk category, not both"
+                  style={{ fontSize:12, lineHeight:1.6, borderColor: form.gradingGuidance ? 'var(--red)' : undefined }} />
               </div>
             </>
           ) : (

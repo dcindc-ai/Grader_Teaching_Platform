@@ -161,58 +161,38 @@ INSTRUCTOR OVERRIDE FOR THIS STUDENT ONLY (apply only to this submission):
 \` : ''}
 \${matStr}
 
-GRADING PHILOSOPHY (how this instructor actually grades):
+DO NOT PENALIZE LIST (MANDATORY — these override everything else):
+${assignment.grading_guidance ? assignment.grading_guidance.split('\n').filter(l => l.trim()).map(l => l.startsWith('-') ? l : '- ' + l).join('\n') : '(none set — add guidance in assignment settings)'}
 
+${assignment.grading_override ? `OVERRIDE FOR THIS STUDENT ONLY:
+${assignment.grading_override}
+` : ''}
+GRADING PHILOSOPHY (how this instructor actually grades — only apply if relevant to this course and assignment):
+${course.institution && course.institution.toLowerCase().includes('maryland') ? `
 WHAT A 6 LOOKS LIKE:
 - Opens with a clear, declarative significance statement — the reader immediately knows what they are looking at and why it matters
 - Annotated product contains all core elements: legend, north arrow, preferably a neatline
 - Student does not just label objects — they explain what each labeled object tells them and how they drew that conclusion
-- Provides a representative example or snapshot that drives clarity and supports a decision
 - The work reads like it was made for a decision-maker, not a checklist
-
-WHAT A 5 LOOKS LIKE:
-- Draws enough conclusions to provide a window into significance but lacks ultimate clarity
-- Makes the right points but does not fully close the loop on what a reader should do or think
-- Midway between going through the motions and genuine analytical insight
 
 WHAT A 4 LOOKS LIKE:
 - Goes through the motions — labels objects, counts them, lists facts
-- "There are 10 helicopters" with no follow-through on why that matters
 - Does not answer the core question: why should I care about this?
 - No synthesis, no decision-relevant conclusion, just inventory
-- Bare minimum compliance with the assignment requirements
-
-WHAT A 3 LOOKS LIKE:
-- Fails to follow directions or omits basic required elements
-- Makes no distinction between what matters and what does not
-- Injects personal opinion that is not qualified, demonstrated, or grounded in evidence
-- Shows no analytical judgment — wings it
-- Ignores principles taught in course lectures
-- Cannot articulate the problem being analyzed
-
-THE CORE QUESTION every submission must answer: Why should I care? What am I looking at and why does it matter?
 
 AUTOMATIC DEDUCTIONS (apply regardless of other quality):
 - Missing legend on annotated product: -0.5 pts minimum
 - Missing north arrow or direction indicator: -0.5 pts
 - Spelling errors: -0.5 pts per instance
-- Poor grammar that impedes clarity: -0.5 pts
-- Conclusions drawn without supporting evidence from the imagery: -0.5 pts per instance
 - First person language (I, we, my): flag and deduct
 
-NEVER ACCEPTABLE (these indicate the student does not understand GEOINT):
-- Over-the-top language or conclusions not supported by visible evidence
-- Taking massive liberties with what is actually in the image
-- Stating facts without analytical judgment (listing vs. envisioning)
-- Inability to articulate the problem being analyzed
-- Confusing observation (what is visible) with inference (what it means) without labeling which is which
-
-GEOINT STANDARD: The student must demonstrate both empirical discipline (what the evidence shows) and logical argumentation (what conclusions follow). Both are required. Neither alone is sufficient.
-
-LINKAGE TO COURSE CONCEPTS: If course materials are provided above, evaluate whether the student applied concepts from the lectures. Students are expected to connect what they see to frameworks taught in class.
-
-COLORBLIND ACCESSIBILITY: Red/green color combinations affect ~8% of males. Flag if used. Recommend blue/yellow or shape differentiation instead.
-
+GEOINT STANDARD: The student must demonstrate both empirical discipline (what the evidence shows) and logical argumentation (what conclusions follow).
+COLORBLIND ACCESSIBILITY: Red/green color combinations affect ~8% of males. Flag if used.
+` : `
+Grade based strictly on the rubric provided above. Apply the rubric criteria as written.
+Do not import grading standards from other courses or disciplines.
+Focus only on what the rubric asks for — nothing more, nothing less.
+`}
 REWRITE SUGGESTIONS: For every flagged narrative sentence, provide a concrete rewrite showing what the sentence should say.
 
 CALIBRATION EXAMPLES:
