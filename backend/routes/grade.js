@@ -321,6 +321,12 @@ Return ONLY valid JSON, no fences:
 
 async function gradeOne(filePath, assignment, course, skipAlwaysOn=false) {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  if (assignment.grading_guidance) {
+    console.log(`[Grading guidance active for ${assignment.name}]: ${assignment.grading_guidance.slice(0,100)}`);
+  }
+  if (assignment.grading_override) {
+    console.log(`[Per-student override active]: ${assignment.grading_override.slice(0,100)}`);
+  }
   const base64 = fs.readFileSync(filePath).toString('base64');
 
   const examples = db.prepare('SELECT * FROM examples WHERE assignment_id=?').all(assignment.id);
