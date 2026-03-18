@@ -22,6 +22,7 @@ function migrate(db) {
 
     "ALTER TABLE assignments ADD COLUMN target_avg REAL DEFAULT 4.5",
     "ALTER TABLE assignments ADD COLUMN grading_strictness TEXT DEFAULT 'standard'",
+    "ALTER TABLE assignments ADD COLUMN grading_guidance TEXT DEFAULT ''",
 
     // Materials
     "ALTER TABLE materials ADD COLUMN material_type TEXT DEFAULT 'lecture'",

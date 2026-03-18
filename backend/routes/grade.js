@@ -151,7 +151,15 @@ ${assignment.grading_strictness === 'lenient' ? '- Be generous with partial cred
 ${assignment.grading_strictness === 'strict' ? '- Hold students to a high standard. Partial credit only for work that is substantively correct. Missing elements are deductions.' : ''}
 ${assignment.grading_strictness === 'standard' ? '- Grade fairly. Full credit for work that meets all requirements. Partial credit for work that mostly meets requirements.' : ''}
 - If this student\'s work would place the class average significantly above or below the target, adjust scores to reflect actual quality more precisely.
-${matStr}
+\${assignment.grading_guidance ? \`
+INSTRUCTOR GUIDANCE FOR THIS ASSIGNMENT (these instructions override default rubric behavior — follow them exactly):
+\${assignment.grading_guidance}
+\` : ''}
+\${assignment.grading_override ? \`
+INSTRUCTOR OVERRIDE FOR THIS STUDENT ONLY (apply only to this submission):
+\${assignment.grading_override}
+\` : ''}
+\${matStr}
 
 GRADING PHILOSOPHY (how this instructor actually grades):
 
@@ -722,7 +730,7 @@ router.put('/:id', (req, res) => {
 
 // POST /api/grade/:id/regrade — regrade with strictness override
 router.post('/:id/regrade', async (req, res) => {
-  const { strictness } = req.body; // 'lenient' | 'standard' | 'strict'
+  const { strictness, gradingOverride } = req.body;
   const gradeRow = db.prepare('SELECT * FROM grades WHERE id=?').get(req.params.id);
   if (!gradeRow) return res.status(404).json({ error: 'Grade not found' });
 
@@ -738,7 +746,7 @@ router.post('/:id/regrade', async (req, res) => {
   if (!assignment || !course) return res.status(400).json({ error: 'Assignment or course not found' });
 
   // Override strictness on a copy of the assignment
-  const assignmentOverride = { ...assignment, grading_strictness: strictness || 'standard' };
+  const assignmentOverride = { ...assignment, grading_strictness: strictness || 'standard', grading_override: gradingOverride || '' };
 
   try {
     const { gradeResult } = await gradeOne(originalPath, assignmentOverride, course, true);

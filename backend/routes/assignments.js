@@ -27,8 +27,8 @@ router.post('/', (req, res) => {
 
 router.put('/:id', (req, res) => {
   const b = req.body;
-  db.prepare('UPDATE assignments SET name=?,type=?,max_score=?,display_order=?,description=?,rubric=?,rubric_criteria=? WHERE id=?')
-    .run(b.name, b.type, b.maxScore, b.order, b.description, b.rubric, b.rubricCriteria ? JSON.stringify(b.rubricCriteria) : null, req.params.id);
+  db.prepare('UPDATE assignments SET name=?,type=?,max_score=?,display_order=?,description=?,rubric=?,rubric_criteria=?,grading_guidance=? WHERE id=?')
+    .run(b.name, b.type, b.maxScore, b.order, b.description, b.rubric, b.rubricCriteria ? JSON.stringify(b.rubricCriteria) : null, b.gradingGuidance || '', req.params.id);
   res.json(parseAssignment(db.prepare('SELECT * FROM assignments WHERE id=?').get(req.params.id)));
 });
 

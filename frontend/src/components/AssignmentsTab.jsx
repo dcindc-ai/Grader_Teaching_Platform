@@ -209,6 +209,36 @@ export default function AssignmentsTab({ course, password }) {
                 <textarea rows={8} value={form.description||''} onChange={e => setForm(f=>({...f,description:e.target.value}))} style={{ fontFamily:'var(--mono)',fontSize:12 }} /></div>
               <div className="field"><label>Rubric</label>
                 <textarea rows={12} value={form.rubric||''} onChange={e => setForm(f=>({...f,rubric:e.target.value}))} style={{ fontFamily:'var(--mono)',fontSize:12 }} /></div>
+              <div className="field">
+                <label>Grading guidance <span style={{ fontWeight:400, color:'var(--text3)', fontSize:11 }}>— instructor overrides injected into every grade for this assignment</span></label>
+                <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:8 }}>
+                  {[
+                    "Don't penalize for bullet point format — narrative structure is covered later",
+                    "Don't deduct for missing north arrow — not yet taught",
+                    "Don't deduct for missing legend — not yet covered",
+                    "Be lenient on source citations — first intelligence product",
+                    "Don't penalize colorblind accessibility issues — not yet taught",
+                  ].map(t => (
+                    <button key={t} style={{ fontSize:11, padding:'3px 8px', borderRadius:4,
+                      background: (form.gradingGuidance||'').includes(t) ? 'rgba(37,99,235,0.1)' : 'var(--bg2)',
+                      color: (form.gradingGuidance||'').includes(t) ? 'var(--accent)' : 'var(--text3)',
+                      border: `1px solid ${(form.gradingGuidance||'').includes(t) ? 'var(--accent)' : 'var(--border)'}` }}
+                      onClick={() => {
+                        const cur = form.gradingGuidance || '';
+                        if (cur.includes(t)) {
+                          setForm(f => ({...f, gradingGuidance: cur.replace('\n- ' + t, '').replace('- ' + t, '').trim()}));
+                        } else {
+                          setForm(f => ({...f, gradingGuidance: cur ? cur + '\n- ' + t : '- ' + t}));
+                        }
+                      }}>
+                      {(form.gradingGuidance||'').includes(t) ? '✓ ' : '+ '}{t}
+                    </button>
+                  ))}
+                </div>
+                <textarea rows={4} value={form.gradingGuidance||''} onChange={e => setForm(f=>({...f,gradingGuidance:e.target.value}))}
+                  placeholder="Add any specific guidance for Claude when grading this assignment. These override default rubric behavior."
+                  style={{ fontSize:12, lineHeight:1.6 }} />
+              </div>
             </>
           ) : (
             <>

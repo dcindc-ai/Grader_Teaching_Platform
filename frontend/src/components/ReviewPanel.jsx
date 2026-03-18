@@ -145,6 +145,7 @@ export default function ReviewPanel({ grade: initialGrade, password, onDelete, o
   const [showRegrade, setShowRegrade] = useState(false);
   const [regradeStrictness, setRegradeStrictness] = useState('standard');
   const [regrading, setRegrading] = useState(false);
+  const [gradingOverride, setGradingOverride] = useState('');
   const [alwaysOn, setAlwaysOn] = useState(initialGrade.alwaysOn || null);
   const [aoActing, setAoActing] = useState(false);
 
@@ -198,7 +199,7 @@ export default function ReviewPanel({ grade: initialGrade, password, onDelete, o
       const r = await fetch(`${BASE}/api/grade/${grade.id}/regrade`, {
         method: 'POST',
         headers: { 'x-admin-password': password, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ strictness: regradeStrictness })
+        body: JSON.stringify({ strictness: regradeStrictness, gradingOverride })
       });
       const updated = await r.json();
       if (updated.error) throw new Error(updated.error);
@@ -544,7 +545,7 @@ export default function ReviewPanel({ grade: initialGrade, password, onDelete, o
               <div style={{ marginTop: 10, padding: '12px 14px', background: 'var(--bg2)',
                 borderRadius: 8, border: '1px solid var(--border)' }}>
                 <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10 }}>
-                  Regrade with different strictness
+                  Regrade with adjustments
                 </div>
                 <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
                   {[
@@ -552,28 +553,55 @@ export default function ReviewPanel({ grade: initialGrade, password, onDelete, o
                     { val: 'standard', label: 'Standard', desc: 'Grade as written' },
                     { val: 'strict', label: 'More strict', desc: 'Higher bar for full credit' },
                   ].map(({ val, label, desc }) => (
-                    <div key={val}
-                      onClick={() => setRegradeStrictness(val)}
-                      style={{
-                        flex: 1, padding: '8px 10px', borderRadius: 6, cursor: 'pointer',
+                    <div key={val} onClick={() => setRegradeStrictness(val)}
+                      style={{ flex: 1, padding: '8px 10px', borderRadius: 6, cursor: 'pointer',
                         border: `2px solid ${regradeStrictness === val ? 'var(--accent)' : 'var(--border)'}`,
-                        background: regradeStrictness === val ? 'var(--accent-faint, rgba(0,100,200,0.06))' : '#fff'
-                      }}>
+                        background: regradeStrictness === val ? 'var(--accent-faint, rgba(0,100,200,0.06))' : '#fff' }}>
                       <div style={{ fontSize: 12, fontWeight: 700,
                         color: regradeStrictness === val ? 'var(--accent)' : 'var(--text)' }}>{label}</div>
                       <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>{desc}</div>
                     </div>
                   ))}
                 </div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', marginBottom: 6,
+                  textTransform: 'uppercase', letterSpacing: '0.06em' }}>Quick overrides for this student</div>
+                <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 10 }}>
+                  {[
+                    "Don't penalize for missing north arrow",
+                    "Don't penalize for missing legend",
+                    "Don't penalize for bullet point format",
+                    "Don't deduct for source citations",
+                    "Don't penalize colorblind color choices",
+                    "Ignore formatting issues",
+                  ].map(t => {
+                    const active = gradingOverride.includes(t);
+                    return (
+                      <button key={t}
+                        onClick={() => setGradingOverride(cur =>
+                          active ? cur.replace('\n- ' + t, '').replace('- ' + t, '').trim()
+                                 : cur ? cur + '\n- ' + t : '- ' + t
+                        )}
+                        style={{ fontSize: 11, padding: '3px 8px', borderRadius: 4,
+                          background: active ? 'rgba(37,99,235,0.1)' : 'var(--bg)',
+                          color: active ? 'var(--accent)' : 'var(--text3)',
+                          border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}` }}>
+                        {active ? '✓ ' : '+ '}{t}
+                      </button>
+                    );
+                  })}
+                </div>
+                <textarea value={gradingOverride} onChange={e => setGradingOverride(e.target.value)}
+                  placeholder="Or type specific instructions… e.g. 'She discussed the legend issue in office hours — don't count off'"
+                  rows={3} style={{ fontSize: 12, lineHeight: 1.6, marginBottom: 10, width: '100%' }} />
                 <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 10 }}>
-                  Claude will re-read the original submission and grade it fresh. Current scores and comments will be replaced.
+                  Claude re-reads the original submission with these instructions. Current scores and comments will be replaced.
                 </div>
                 <button className="primary" style={{ width: '100%', fontSize: 13 }}
                   onClick={regrade} disabled={regrading}>
                   {regrading ? '⏳ Regrading…' : `Regrade as ${regradeStrictness}`}
                 </button>
               </div>
-            )}
+            )}}
           </div>
         </div>
       </div>

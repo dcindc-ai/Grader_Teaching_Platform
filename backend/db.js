@@ -194,10 +194,10 @@ function parseCourse(r) {
 
 function parseAssignment(r) {
   if (!r) return null;
-  // targetAvg and gradingStrictness
   return { id:r.id, courseId:r.course_id, name:r.name, type:r.type, targetAvg:r.target_avg||4.5, gradingStrictness:r.grading_strictness||'standard',
     maxScore:r.max_score, order:r.display_order, description:r.description,
     rubric:r.rubric, rubricCriteria:r.rubric_criteria ? JSON.parse(r.rubric_criteria) : null,
+    gradingGuidance:r.grading_guidance || '',
     createdAt:r.created_at };
 }
 
