@@ -512,7 +512,7 @@ router.get('/redlined-pdf/:gradeId', async (req, res) => {
     function rule(c = GRAY) {
       chk(8); page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 0.5, color: c }); y -= 8;
     }
-    function sanitize(text) { return String(text || '').replace(/[^ -ÿ]/g, '-'); }
+    function sanitize(text) { return String(text || '').replace(/[\r\n\t]+/g, ' ').replace(/[^\x00-\xff]/g, '-'); }
 
     // Header
     page.drawRectangle({ x: 0, y: H - 90, width: W, height: 90, color: rgb(0.12, 0.25, 0.58) });
