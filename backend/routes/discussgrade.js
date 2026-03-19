@@ -67,6 +67,12 @@ router.post('/grade', async (req, res) => {
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+  // Fetch assignment from DB to get grading_guidance and confirm we have the right rubric
+  const assignmentRecord = assignmentId
+    ? db.prepare('SELECT * FROM assignments WHERE id=?').get(assignmentId)
+    : null;
+  const gradingGuidance = assignmentRecord?.grading_guidance || '';
+
   const criteriaText = rubricCriteria.map((c, i) => `
 Criterion ${i + 1}: ${c.name} (max ${c.maxPoints} pts)
 Rating levels:
@@ -87,7 +93,9 @@ ${c.ratings.map(r => `  - ${r.name} (${r.points} pts): ${r.description}`).join('
 
 Be fair, specific, and constructive. Grade based on what the student actually wrote, not what they could have written.
 Be direct — if something is missing, say so clearly. Use the student's first name only.
-${exampleContext ? 'Use the calibration examples to calibrate your scoring to this instructor\'s standards.' : ''}`;
+Grade ONLY on the rubric criteria provided. Do not add external grading standards not present in the rubric.
+${exampleContext ? 'Use the calibration examples to calibrate your scoring to this instructor\'s standards.' : ''}
+${gradingGuidance ? `\nINSTRUCTOR EXCEPTIONS — DO NOT PENALIZE FOR THESE (carve-outs from the rubric only, everything else still applies):\n${gradingGuidance}` : ''}`;
 
   const prompt = `DISCUSSION QUESTION:
 ${discussionQuestion || 'No question provided'}

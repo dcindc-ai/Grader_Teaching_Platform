@@ -212,16 +212,24 @@ export default function AssignmentsTab({ course, password }) {
               <div className="field">
                 <label>DO NOT PENALIZE <span style={{ fontWeight:400, color:'var(--red)', fontSize:11 }}>— Claude will follow these as hard rules overriding the rubric</span></label>
                 <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:8 }}>
-                  {[
-                    "Students only need to cite ONE of the required readings, not all of them",
-                    "Students choose ONE category or option — do not penalize for not addressing both",
+                  {(course.institution?.toLowerCase().includes('maryland') ? [
                     "Do not penalize for bullet point format",
                     "Do not deduct for missing north arrow — not yet taught",
                     "Do not deduct for missing legend — not yet covered",
                     "Do not penalize for missing source citations on this assignment",
                     "Do not penalize colorblind color choices — not yet taught",
                     "Do not penalize for first-person language on this assignment",
-                  ].map(t => (
+                    "Students only need to cite ONE of the required readings, not all of them",
+                  ] : [
+                    "Students only need to cite ONE of the required readings, not all of them",
+                    "Students choose ONE category or option — do not penalize for not addressing both",
+                    "Do not penalize for missing source citations on this assignment",
+                    "Do not penalize for first-person language on this assignment",
+                    "Do not penalize for bullet point format",
+                    "Peer responses are graded on quality of engagement, not length",
+                    "Do not penalize for using a real-world work example rather than a hypothetical",
+                    "Grade only on the rubric criteria provided — do not add external standards",
+                  ]).map(t => (
                     <button key={t} style={{ fontSize:11, padding:'3px 8px', borderRadius:4,
                       background: (form.gradingGuidance||'').includes(t) ? 'rgba(220,38,38,0.1)' : 'var(--bg2)',
                       color: (form.gradingGuidance||'').includes(t) ? 'var(--red)' : 'var(--text3)',
