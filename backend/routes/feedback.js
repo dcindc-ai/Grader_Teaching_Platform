@@ -622,7 +622,6 @@ router.get('/redlined-pdf/:gradeId', async (req, res) => {
     }
 
     chk(20); rule();
-    page.drawText(`${course?.name || 'GEOG 661'} - Teaching Platform - INSTRUCTOR ONLY`, { x:M, y, size:8, font, color:GRAY });
 
     const pdfBytes = await doc.save();
     const safeName = sanitize(grade.studentName || 'unknown').replace(/\s+/g,'_').toLowerCase();
