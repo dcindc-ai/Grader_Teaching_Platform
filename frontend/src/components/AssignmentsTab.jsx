@@ -210,6 +210,11 @@ export default function AssignmentsTab({ course, password }) {
               <div className="field"><label>Rubric</label>
                 <textarea rows={12} value={form.rubric||''} onChange={e => setForm(f=>({...f,rubric:e.target.value}))} style={{ fontFamily:'var(--mono)',fontSize:12 }} /></div>
               <div className="field">
+                <label>Canvas Assignment ID <span style={{ fontWeight:400, color:'var(--text3)', fontSize:11 }}>— from Canvas assignment URL, e.g. /assignments/665907</span></label>
+                <input type="text" value={form.canvasAssignmentId||''} onChange={e => setForm(f=>({...f,canvasAssignmentId:e.target.value}))}
+                  placeholder="e.g. 665907" style={{ fontSize:12, fontFamily:'var(--mono)' }} />
+              </div>
+              <div className="field">
                 <label>DO NOT PENALIZE <span style={{ fontWeight:400, color:'var(--red)', fontSize:11 }}>— Claude will follow these as hard rules overriding the rubric</span></label>
                 <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:8 }}>
                   {(course.institution?.toLowerCase().includes('maryland') ? [

@@ -188,6 +188,7 @@ function parseCourse(r) {
     color:r.color, colorDark:r.color_dark, colorFaint:r.color_faint,
     instructorBio:r.instructor_bio, voiceGuidelines:r.voice_guidelines,
     discussionDefaultQuestion:r.discussion_default_question,
+    canvasUrl:r.canvas_url || '', canvasToken:r.canvas_token || '',
     sliders:JSON.parse(r.sliders||'{"clarity":3,"logic":3,"structure":3,"tone":3,"style":3}'),
     createdAt:r.created_at };
 }
@@ -198,6 +199,7 @@ function parseAssignment(r) {
     maxScore:r.max_score, order:r.display_order, description:r.description,
     rubric:r.rubric, rubricCriteria:r.rubric_criteria ? JSON.parse(r.rubric_criteria) : null,
     gradingGuidance:r.grading_guidance || '',
+    canvasAssignmentId:r.canvas_assignment_id || '',
     createdAt:r.created_at };
 }
 

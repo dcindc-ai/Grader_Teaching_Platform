@@ -7,6 +7,8 @@ const SCORES = [3, 3.5, 4, 4.5, 5, 5.5, 6];
 export default function LabelTab({ course, password, queue: externalQueue, onQueue: onExternalQueue }) {
   const [assignments, setAssignments] = useState([]);
   const [assignmentId, setAssignmentId] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState('');
   // Use external (lifted) queue if provided, otherwise local with localStorage persistence
   const storageKey = `label_queue_${course.id}`;
   const [localQueue, setLocalQueueRaw] = useState(() => {
@@ -69,6 +71,39 @@ export default function LabelTab({ course, password, queue: externalQueue, onQue
     }
   }
 
+  async function importFromCanvas() {
+    if (!assignmentId) return;
+    setImporting(true);
+    setImportError('');
+    try {
+      const r = await fetch(`${BASE}/api/canvas/submissions?courseId=${course.id}&assignmentId=${assignmentId}`, {
+        headers: { 'x-admin-password': password }
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Import failed');
+      const { submissions } = data;
+      if (!submissions?.length) throw new Error('No submissions found in Canvas for this assignment');
+      const newItems = submissions
+        .filter(s => !queue.find(q => q.name === s.studentName))
+        .map(s => ({
+          id: `canvas-${s.studentId}`,
+          name: s.studentName,
+          studentName: s.studentName,
+          content: s.submissionText,
+          status: 'pending',
+          source: 'canvas'
+        }));
+      if (!newItems.length) {
+        setImportError('All submissions already in queue');
+      } else {
+        setQueue(q => [...q, ...newItems]);
+      }
+    } catch(e) {
+      setImportError(e.message);
+    }
+    setImporting(false);
+  }
+
   async function handleFiles(files) {
     const pdfs = Array.from(files).filter(f => f.name.endsWith('.pdf'));
     if (!pdfs.length) return;
@@ -117,13 +152,15 @@ export default function LabelTab({ course, password, queue: externalQueue, onQue
   async function saveItem(item) {
     if (!item || !assignmentId) return;
     setSaving(true);
-    const content = [
-      item.extractedComments ? `INSTRUCTOR COMMENTS:\n${item.extractedComments}` : '',
-      item.visualDescription ? `\nVISUAL PRODUCT DESCRIPTION:\n${item.visualDescription}` : '',
-      item.rubricObservations && Object.keys(item.rubricObservations).length ? 
-        `\nRUBRIC OBSERVATIONS:\n${Object.entries(item.rubricObservations).map(([k,v]) => `${k}: ${v}`).join('\n')}` : '',
-      item.additionalContext ? `\nADDITIONAL INSTRUCTOR NOTES:\n${item.additionalContext}` : ''
-    ].filter(Boolean).join('\n');
+    const content = item.source === 'canvas'
+      ? (item.content || '')
+      : [
+          item.extractedComments ? `INSTRUCTOR COMMENTS:\n${item.extractedComments}` : '',
+          item.visualDescription ? `\nVISUAL PRODUCT DESCRIPTION:\n${item.visualDescription}` : '',
+          item.rubricObservations && Object.keys(item.rubricObservations).length ?
+            `\nRUBRIC OBSERVATIONS:\n${Object.entries(item.rubricObservations).map(([k,v]) => `${k}: ${v}`).join('\n')}` : '',
+          item.additionalContext ? `\nADDITIONAL INSTRUCTOR NOTES:\n${item.additionalContext}` : ''
+        ].filter(Boolean).join('\n');
 
     try {
       const ex = await addExample(assignmentId, {
@@ -171,6 +208,12 @@ export default function LabelTab({ course, password, queue: externalQueue, onQue
           <button className="primary" onClick={() => fileRef.current.click()} disabled={parsing} style={{ fontSize: 12 }}>
             {parsing ? 'Reading…' : '+ Upload PDFs'}
           </button>
+          {course.canvasUrl && course.canvasToken && (
+            <button onClick={importFromCanvas} disabled={importing} style={{ fontSize: 12, background: 'var(--accent)', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: 6, cursor: 'pointer' }}>
+              {importing ? '⏳ Importing…' : '⬇ Import from Canvas'}
+            </button>
+          )}
+          {importError && <span style={{ fontSize: 11, color: 'var(--red)' }}>{importError}</span>}
         </div>
       </div>
 
@@ -279,7 +322,22 @@ export default function LabelTab({ course, password, queue: externalQueue, onQue
                   <span style={{ fontSize: 11, color: 'var(--text3)' }}>{selectedIdx + 1} of {queue.length}</span>
                 </div>
 
-                {/* Extracted comments */}
+                {/* Canvas submission text */}
+                {item.source === 'canvas' && item.content && (
+                  <div style={{ marginBottom: 14 }}>
+                    <label>Student submission</label>
+                    <div style={{
+                      padding: '10px 12px', background: 'var(--bg2)', borderRadius: 6,
+                      fontSize: 12, lineHeight: 1.7, color: 'var(--text)',
+                      maxHeight: 240, overflowY: 'auto', whiteSpace: 'pre-wrap',
+                      border: '1px solid var(--border)'
+                    }}>
+                      {item.content}
+                    </div>
+                  </div>
+                )}
+
+                {/* Extracted comments (PDF source) */}
                 {item.extractedComments && (
                   <div style={{ marginBottom: 14 }}>
                     <label>Extracted instructor comments</label>

@@ -182,7 +182,22 @@ export default function CourseSettingsTab({ course, password, onUpdate, onDelete
         </div>
       </div>
 
-      {/* Grading strictness */}
+      {/* Canvas Integration */}
+      <div className="card" style={{ marginBottom: 14 }}>
+        <div className="sec-label" style={{ marginBottom: 10 }}>Canvas Integration</div>
+        <div className="field">
+          <label>Canvas course URL <span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: 11 }}>— e.g. https://wakeforest.instructure.com/courses/81230</span></label>
+          <input type="text" value={form.canvasUrl||''} onChange={e=>upd('canvasUrl',e.target.value)}
+            placeholder="https://yourschool.instructure.com/courses/12345"
+            style={{ fontSize: 12 }} />
+        </div>
+        <div className="field">
+          <label>Canvas access token <span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: 11 }}>— Canvas → Account → Settings → New Access Token</span></label>
+          <input type="password" value={form.canvasToken||''} onChange={e=>upd('canvasToken',e.target.value)}
+            placeholder="Paste your Canvas token here"
+            style={{ fontSize: 12 }} />
+        </div>
+      </div>
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <div style={{ fontWeight: 500 }}>Grading Strictness</div>

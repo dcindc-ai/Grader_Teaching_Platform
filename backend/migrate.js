@@ -6,6 +6,9 @@ function migrate(db) {
     // Courses
     "ALTER TABLE courses ADD COLUMN grading_model TEXT DEFAULT 'rubric'",
     "ALTER TABLE courses ADD COLUMN response_defaults TEXT DEFAULT '{}'",
+    "ALTER TABLE courses ADD COLUMN canvas_url TEXT DEFAULT ''",
+    "ALTER TABLE courses ADD COLUMN canvas_token TEXT DEFAULT ''",
+    "ALTER TABLE assignments ADD COLUMN canvas_assignment_id TEXT DEFAULT ''",
 
     // Assignments
     "ALTER TABLE assignments ADD COLUMN rubric_criteria TEXT",
