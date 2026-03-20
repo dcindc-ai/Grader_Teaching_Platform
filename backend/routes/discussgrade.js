@@ -59,7 +59,8 @@ router.post('/parse-rubric', (req, res) => {
 // ─── Grade a discussion submission against a rubric ───────────────────────
 
 router.post('/grade', async (req, res) => {
-  const { courseId, assignmentId, studentName, discussionQuestion, submission, rubricCriteria: clientRubric, instructorBio } = req.body;
+  const { courseId, assignmentId, studentName, discussionQuestion, submission, rubricCriteria: clientRubric, instructorBio, tone, sentences } = req.body;
+  const sentenceCount = parseInt(sentences) || 3;
 
   if (!submission) {
     return res.status(400).json({ error: 'submission required' });
@@ -137,10 +138,7 @@ Grade this submission against each criterion. Return ONLY valid JSON, no markdow
   ],
   "totalPoints": 72.5,
   "totalMax": 75,
-  "instructorParagraph": "Personalized 3-4 sentence paragraph in instructor voice. Start with first name. Acknowledge one specific strength. Give honest critical feedback with a concrete suggestion. End with an encouraging close. Warm but direct.
-- No sentence may exceed 18 words. Break long sentences into two.
-- Avoid colons, semicolons, and em dashes. Use periods instead.
-- Write in plain, direct prose.",
+  "instructorParagraph": "Personalized ${sentenceCount}-sentence paragraph in instructor voice. Start with first name. Acknowledge specific strength. Give honest critical feedback. Warm but direct. Max 18 words per sentence.",
   "overallSummary": "1-2 sentence overall assessment"
 }`;
 
