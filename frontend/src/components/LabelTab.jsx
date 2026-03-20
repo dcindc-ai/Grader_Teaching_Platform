@@ -2,26 +2,16 @@ import { useState, useRef, useEffect } from 'react';
 import { getAssignments, addExample, getExamples, deleteExample } from '../api.js';
 
 const BASE = import.meta.env.PROD ? '' : 'http://localhost:3001';
-// Score quick-picks are generated dynamically based on assignment max score
+// Score quick-picks: 8 evenly spaced values from 50% of max up to max
 function getScoreOptions(maxScore) {
   const max = parseFloat(maxScore) || 6;
-  if (max <= 10) {
-    // 6pt or 10pt scale — fine increments
-    const steps = [];
-    for (let s = Math.floor(max * 0.4); s <= max; s += max <= 6 ? 0.5 : 1) {
-      steps.push(Math.round(s * 10) / 10);
-    }
-    return steps;
+  const step = max / 10;
+  const options = [];
+  for (let i = 5; i <= 10; i++) {
+    const val = Math.round(max * (i / 10) * 10) / 10;
+    if (!options.includes(val)) options.push(val);
   }
-  // Large scale (75pt etc) — show percentage-based anchors
-  return [
-    Math.round(max * 0.7),   // ~70% Needs Improvement top
-    Math.round(max * 0.8),   // ~80% Proficient bottom
-    Math.round(max * 0.85),  // ~85% Proficient top
-    Math.round(max * 0.9),   // ~90% Accomplished bottom
-    Math.round(max * 0.95),  // ~95% Accomplished
-    max                       // Perfect
-  ];
+  return options;
 }
 
 export default function LabelTab({ course, password, queue: externalQueue, onQueue: onExternalQueue }) {
