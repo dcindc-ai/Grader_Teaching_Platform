@@ -244,6 +244,10 @@ export default function GradeTab({ course, password, activeAssignmentId, queue, 
           grade={reviewing}
           password={password}
           onClose={() => setReviewing(null)}
+          onUpdate={updated => {
+            setDbGrades(dg => dg.map(g => g.id === updated.id ? { ...g, ...updated } : g));
+            setReviewing(r => ({ ...r, ...updated }));
+          }}
           onDelete={async () => {
             await deleteGrade(reviewing.id, password);
             onResults(r => r.filter(x => x.id !== reviewing.id));
