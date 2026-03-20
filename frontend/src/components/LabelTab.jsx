@@ -2,7 +2,27 @@ import { useState, useRef, useEffect } from 'react';
 import { getAssignments, addExample, getExamples, deleteExample } from '../api.js';
 
 const BASE = import.meta.env.PROD ? '' : 'http://localhost:3001';
-const SCORES = [3, 3.5, 4, 4.5, 5, 5.5, 6];
+// Score quick-picks are generated dynamically based on assignment max score
+function getScoreOptions(maxScore) {
+  const max = parseFloat(maxScore) || 6;
+  if (max <= 10) {
+    // 6pt or 10pt scale — fine increments
+    const steps = [];
+    for (let s = Math.floor(max * 0.4); s <= max; s += max <= 6 ? 0.5 : 1) {
+      steps.push(Math.round(s * 10) / 10);
+    }
+    return steps;
+  }
+  // Large scale (75pt etc) — show percentage-based anchors
+  return [
+    Math.round(max * 0.7),   // ~70% Needs Improvement top
+    Math.round(max * 0.8),   // ~80% Proficient bottom
+    Math.round(max * 0.85),  // ~85% Proficient top
+    Math.round(max * 0.9),   // ~90% Accomplished bottom
+    Math.round(max * 0.95),  // ~95% Accomplished
+    max                       // Perfect
+  ];
+}
 
 export default function LabelTab({ course, password, queue: externalQueue, onQueue: onExternalQueue }) {
   const [assignments, setAssignments] = useState([]);
@@ -368,7 +388,7 @@ export default function LabelTab({ course, password, queue: externalQueue, onQue
                 <div style={{ marginBottom: 14 }}>
                   <label>Score</label>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
-                    {SCORES.map(s => (
+                    {getScoreOptions(assignment?.maxScore).map(s => (
                       <button key={s} onClick={() => updateItem(item.id, { score: String(s) })} style={{
                         padding: '6px 10px', fontSize: 13, fontWeight: 600, minWidth: 42,
                         background: item.score === String(s) ? 'var(--accent)' : 'var(--bg2)',
