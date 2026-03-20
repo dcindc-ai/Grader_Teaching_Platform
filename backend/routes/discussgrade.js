@@ -59,19 +59,34 @@ router.post('/parse-rubric', (req, res) => {
 // ─── Grade a discussion submission against a rubric ───────────────────────
 
 router.post('/grade', async (req, res) => {
-  const { courseId, assignmentId, studentName, discussionQuestion, submission, rubricCriteria, instructorBio } = req.body;
+  const { courseId, assignmentId, studentName, discussionQuestion, submission, rubricCriteria: clientRubric, instructorBio } = req.body;
 
-  if (!submission || !rubricCriteria?.length) {
-    return res.status(400).json({ error: 'submission and rubricCriteria required' });
+  if (!submission) {
+    return res.status(400).json({ error: 'submission required' });
   }
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  // Fetch assignment from DB to get grading_guidance and confirm we have the right rubric
+  // Fetch assignment from DB — use stored rubric and guidance if available
   const assignmentRecord = assignmentId
     ? db.prepare('SELECT * FROM assignments WHERE id=?').get(assignmentId)
     : null;
   const gradingGuidance = assignmentRecord?.grading_guidance || '';
+
+  // Prefer stored rubricCriteria from DB over what client sent
+  let rubricCriteria = clientRubric;
+  if (assignmentRecord?.rubric_criteria) {
+    try {
+      const stored = JSON.parse(assignmentRecord.rubric_criteria);
+      if (Array.isArray(stored) && stored.length > 0) {
+        rubricCriteria = stored;
+      }
+    } catch(e) {}
+  }
+
+  if (!rubricCriteria?.length) {
+    return res.status(400).json({ error: 'No rubric criteria found. Add rubric criteria to the assignment in your app first.' });
+  }
 
   const criteriaText = rubricCriteria.map((c, i) => `
 Criterion ${i + 1}: ${c.name} (max ${c.maxPoints} pts)
