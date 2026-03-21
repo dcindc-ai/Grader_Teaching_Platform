@@ -123,7 +123,12 @@ ${submission}
 RUBRIC CRITERIA:
 ${criteriaText}
 
-Grade this submission against EVERY criterion listed above. You MUST return a criteriaGrades entry for ALL ${rubricCriteria.length} criteria — including criteria where the student scored perfectly. Do not skip any criterion. Return ONLY valid JSON, no markdown fences:
+Grade this submission. You MUST return a criteriaGrades entry for EVERY criterion below — no exceptions, including criteria where the student scores perfectly.
+
+REQUIRED CRITERIA (you must include all ${rubricCriteria.length} in your response):
+${rubricCriteria.map((c, i) => `${i+1}. ${c.name}`).join('\n')}
+
+Return ONLY valid JSON, no markdown fences:
 {
   "criteriaGrades": [
     {
@@ -152,6 +157,7 @@ Grade this submission against EVERY criterion listed above. You MUST return a cr
 
     const text = resp.content.find(b => b.type === 'text')?.text || '{}';
     const result = JSON.parse(text.replace(/```json\n?|```/g, '').trim());
+    console.log(`[discussgrade] criteriaGrades returned: ${result.criteriaGrades?.length} items for ${rubricCriteria.length} criteria`);
 
     // Save to grades table if assignment provided
     if (assignmentId && courseId) {
