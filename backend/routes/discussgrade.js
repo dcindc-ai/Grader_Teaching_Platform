@@ -59,7 +59,29 @@ router.post('/parse-rubric', (req, res) => {
 // ─── Grade a discussion submission against a rubric ───────────────────────
 
 router.post('/grade', async (req, res) => {
-  const { courseId, assignmentId, studentName, discussionQuestion, submission, rubricCriteria: clientRubric, instructorBio, tone, sentences, submissionType } = req.body;
+  const { courseId, assignmentId, studentName, discussionQuestion, submission, rubricCriteria: clientRubric, instructorBio, tone, sentences, submissionType, feedbackStyle, syncOnly, manualGrade } = req.body;
+
+  // Sync-only mode — save manual Canvas grades back to platform without re-grading
+  if (syncOnly && manualGrade && assignmentId && courseId) {
+    try {
+      const { v4: uuidv4 } = require('uuid');
+      const existing = db.prepare('SELECT id FROM grades WHERE assignment_id=? AND course_id=? AND student_name=?').get(assignmentId, courseId, studentName);
+      const scores = {};
+      manualGrade.criteriaGrades?.forEach(cg => { scores[cg.criterionName] = cg.suggestedPoints; });
+      if (existing) {
+        db.prepare('UPDATE grades SET total=?,scores=?,instructor_paragraph=? WHERE id=?')
+          .run(manualGrade.totalPoints || 0, JSON.stringify(scores), manualGrade.instructorParagraph || '', existing.id);
+        return res.json({ id: existing.id, synced: true });
+      } else {
+        const gradeId = uuidv4();
+        db.prepare('INSERT INTO grades (id,course_id,assignment_id,student_name,assignment_name,file_name,total,max_score,scores,comments,summary,key_strength,key_improvement,instructor_paragraph) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+          .run(gradeId, courseId, assignmentId, studentName, 'Discussion', 'discussion', manualGrade.totalPoints || 0, 75, JSON.stringify(scores), JSON.stringify({}), '', '', '', manualGrade.instructorParagraph || '');
+        return res.json({ id: gradeId, synced: true });
+      }
+    } catch(e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
   const sentenceCount = parseInt(sentences) || 3;
   const isSkillAssessment = submissionType === 'skill';
 
@@ -147,14 +169,23 @@ ${gradingGuidance ? `\nINSTRUCTOR EXCEPTIONS — DO NOT PENALIZE FOR THESE:\n${g
     ? tone
     : (toneMap[tone] || toneMap['plain-warm']);
 
+  const styleMap = {
+    'balanced':       'Acknowledge a specific strength first, then address the most important gap clearly.',
+    'strength-first': 'Open with what they genuinely did well — be specific. Then transition to what needs work.',
+    'gap-first':      'Lead with the most important thing to fix. Then acknowledge what worked.',
+    'growth':         'Frame everything in terms of growth — where they are, what the next level looks like, how to get there.',
+    'direct':         'Skip the praise. Just tell them exactly what the work shows and what needs to change.',
+  };
+  const styleInstruction = styleMap[feedbackStyle] || styleMap['balanced'];
+
   // Skill assessment mode: deeper, more pointed per-criterion feedback
   const criterionCommentInstruction = isSkillAssessment
     ? `2-4 sentences. ${toneInstructions} Be specific and direct. Name the exact thing they did well or the exact gap. Reference something they actually wrote. Tell them what a stronger version would look like.`
     : `1-2 sentences. ${toneInstructions} Be specific. Reference something they actually wrote. Only include if score is not perfect.`;
 
   const paragraphInstruction = isSkillAssessment
-    ? `${toneInstructions} Write ${sentenceCount} sentences. Start with first name. Lead with the most specific thing they did well. Name the intellectual move they made. Compare briefly to what most students do. Be honest about gaps. End with something personal and forward-looking. Max 20 words per sentence.`
-    : `${toneInstructions} Start with the student's first name. ${sentenceCount} sentences total. Max 18 words per sentence. No jargon. Write like you're talking to them directly.`;
+    ? `${toneInstructions} ${styleInstruction} Write ${sentenceCount} sentences. Start with first name. Name the specific intellectual move they made. Compare briefly to what most students do. Be honest about gaps. End with something personal and forward-looking. Max 20 words per sentence.`
+    : `${toneInstructions} ${styleInstruction} Start with the student's first name. ${sentenceCount} sentences total. Max 18 words per sentence. No jargon. Write like you're talking to them directly.`;
 
   const prompt = `DISCUSSION QUESTION:
 ${discussionQuestion || 'No question provided'}
