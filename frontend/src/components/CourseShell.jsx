@@ -8,6 +8,7 @@ import AlwaysOnTab from './AlwaysOnTab.jsx';
 import LabelTab from './LabelTab.jsx';
 import AnalyticsTab from './AnalyticsTab.jsx';
 import CourseSettingsTab from './CourseSettingsTab.jsx';
+import SyncTab from './SyncTab.jsx';
 import { getAssignments } from '../api.js';
 
 const BASE = import.meta.env.PROD ? '' : 'http://localhost:3001';
@@ -21,6 +22,7 @@ const TABS = [
   { key: 'materials', label: 'Materials' },
   { key: 'analytics', label: '📊 Analytics' },
   { key: 'label', label: 'Label Data' },
+  { key: 'sync', label: '⇄ Sync Check' },
   { key: 'settings', label: 'Settings' },
 ];
 
@@ -150,6 +152,9 @@ export default function CourseShell({
         )}
         {tab === 'analytics' && (
           <AnalyticsTab course={course} password={password} />
+        )}
+        {tab === 'sync' && (
+          <SyncTab course={course} password={password} />
         )}
         {tab === 'settings' && (
           <CourseSettingsTab course={course} password={password}

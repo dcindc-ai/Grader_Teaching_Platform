@@ -43,6 +43,7 @@ app.use('/api/analytics', require('./routes/analytics'));
 app.use('/api/discussgrade', require('./routes/discussgrade'));
 app.use('/api/annotate', require('./routes/annotate'));
 app.use('/api/canvas', require('./routes/canvas'));
+app.use('/api/canvassync', require('./routes/canvassync'));
 
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, 'public')));
