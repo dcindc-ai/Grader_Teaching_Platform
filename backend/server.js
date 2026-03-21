@@ -14,7 +14,7 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Auth config
-const AUTH_DISABLED = process.env.REQUIRE_PASSWORD === 'false';
+const AUTH_DISABLED = process.env.REQUIRE_PASSWORD === 'false' || !process.env.ADMIN_PASSWORD;
 if (AUTH_DISABLED) {
   console.log('Auth disabled — no password required (REQUIRE_PASSWORD=false)');
 } else if (!process.env.ADMIN_PASSWORD) {
