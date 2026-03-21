@@ -79,12 +79,27 @@ router.post('/grade', async (req, res) => {
   console.log('[discussgrade] rubric_criteria stored:', !!assignmentRecord?.rubric_criteria);
 
   // Prefer stored rubricCriteria from DB over what client sent
+  // BUT validate they match the assignment — reject stale criteria from other assignments
   let rubricCriteria = clientRubric;
   if (assignmentRecord?.rubric_criteria) {
     try {
       const stored = JSON.parse(assignmentRecord.rubric_criteria);
       if (Array.isArray(stored) && stored.length > 0) {
-        rubricCriteria = stored;
+        // Validate: check stored criteria names match client rubric names
+        // If they're completely different, the DB has stale data — use client rubric
+        const storedNames = stored.map(c => (c.name || '').toLowerCase());
+        const clientNames = (clientRubric || []).map(c => (c.name || '').toLowerCase());
+        const overlap = storedNames.filter(n =>
+          clientNames.some(cn => cn.includes(n.slice(0,15)) || n.includes(cn.slice(0,15)))
+        );
+        if (overlap.length >= Math.min(2, stored.length)) {
+          rubricCriteria = stored;
+          console.log('[discussgrade] Using stored criteria (validated match)');
+        } else {
+          console.log('[discussgrade] Stored criteria do not match Canvas rubric — using Canvas rubric');
+          // Clear the stale stored criteria
+          db.prepare('UPDATE assignments SET rubric_criteria=NULL WHERE id=?').run(assignmentId);
+        }
       }
     } catch(e) {}
   }
@@ -111,11 +126,15 @@ ${c.ratings.map(r => `  - ${r.name} (${r.points} pts): ${r.description}`).join('
 
   const system = `You are ${instructorBio || 'an instructor'} grading a student discussion post.
 
-Be fair, specific, and constructive. Grade based on what the student actually wrote, not what they could have written.
-Be direct — if something is missing, say so clearly. Use the student's first name only.
-Grade ONLY on the rubric criteria provided. Do not add external grading standards not present in the rubric.
+CRITICAL: Grade ONLY against the ${rubricCriteria.length} criteria listed below. Do not reference any other rubric, assignment, or set of requirements. Do not penalize for anything not explicitly in these criteria.
+
+The criteria for THIS assignment are:
+${rubricCriteria.map((c,i) => `${i+1}. ${c.name}`).join('\n')}
+
+Be fair, specific, and constructive. Grade based on what the student actually wrote.
+Be direct — if something is missing say so clearly. Use the student's first name only.
 ${exampleContext ? 'Use the calibration examples to calibrate your scoring to this instructor\'s standards.' : ''}
-${gradingGuidance ? `\nINSTRUCTOR EXCEPTIONS — DO NOT PENALIZE FOR THESE (carve-outs from the rubric only, everything else still applies):\n${gradingGuidance}` : ''}`;
+${gradingGuidance ? `\nINSTRUCTOR EXCEPTIONS — DO NOT PENALIZE FOR THESE:\n${gradingGuidance}` : ''}`;
 
   const prompt = `DISCUSSION QUESTION:
 ${discussionQuestion || 'No question provided'}
