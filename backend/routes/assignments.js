@@ -27,10 +27,22 @@ router.post('/', (req, res) => {
 
 router.put('/:id', (req, res) => {
   const b = req.body;
-  db.prepare('UPDATE assignments SET name=?,type=?,max_score=?,display_order=?,description=?,rubric=?,rubric_criteria=?,grading_guidance=?,canvas_assignment_id=? WHERE id=?')
-    .run(b.name, b.type, b.maxScore, b.order, b.description, b.rubric,
-      b.rubric ? (b.rubricCriteria ? JSON.stringify(b.rubricCriteria) : null) : null,
-      b.gradingGuidance || '', b.canvasAssignmentId || '', req.params.id);
+  // Only update rubric_criteria if rubricCriteria was explicitly sent in the request
+  // If absent (e.g. saving just strictness), preserve whatever is stored
+  const rubricCriteriaValue = 'rubricCriteria' in b
+    ? (b.rubric ? (b.rubricCriteria ? JSON.stringify(b.rubricCriteria) : null) : null)
+    : undefined; // undefined = don't touch it
+
+  if (rubricCriteriaValue !== undefined) {
+    db.prepare('UPDATE assignments SET name=?,type=?,max_score=?,display_order=?,description=?,rubric=?,rubric_criteria=?,grading_guidance=?,canvas_assignment_id=? WHERE id=?')
+      .run(b.name, b.type, b.maxScore, b.order, b.description, b.rubric,
+        rubricCriteriaValue,
+        b.gradingGuidance || '', b.canvasAssignmentId || '', req.params.id);
+  } else {
+    db.prepare('UPDATE assignments SET name=?,type=?,max_score=?,display_order=?,description=?,rubric=?,grading_guidance=?,canvas_assignment_id=? WHERE id=?')
+      .run(b.name, b.type, b.maxScore, b.order, b.description, b.rubric,
+        b.gradingGuidance || '', b.canvasAssignmentId || '', req.params.id);
+  }
   res.json(parseAssignment(db.prepare('SELECT * FROM assignments WHERE id=?').get(req.params.id)));
 });
 
