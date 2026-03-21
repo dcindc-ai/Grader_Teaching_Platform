@@ -122,9 +122,18 @@ export default function DiscussGrader({ course, password, assignments, question,
       setRubricCriteria(d.criteria);
       setTotalMax(d.totalMax);
       if (selectedAssignment) {
+        // Build human-readable rubric text from parsed criteria
+        const rubricText = d.criteria.map((c, i) =>
+          `CRITERION ${i+1}: ${c.name} (${c.maxPoints} pts)\n` +
+          c.ratings.map(r => `- ${r.name} (${r.points} pts): ${r.description}`).join('\n')
+        ).join('\n\n');
         await updateAssignment(selectedAssignment.id, {
-          ...selectedAssignment, rubricCriteria: d.criteria, maxScore: d.totalMax
+          ...selectedAssignment,
+          rubricCriteria: d.criteria,
+          maxScore: d.totalMax,
+          rubric: rubricText  // keep text in sync
         }, password);
+        alert(`✓ Rubric loaded: ${d.criteria.length} criteria, ${d.totalMax} pts total`);
       }
     } catch (e) { alert('Import error: ' + e.message); }
     setImportingRubric(false);
