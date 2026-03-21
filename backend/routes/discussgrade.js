@@ -147,18 +147,22 @@ ${c.ratings.map(r => `  - ${r.name} (${r.points} pts): ${r.description}`).join('
     }
   }
 
-  const system = `You are ${instructorBio || 'an instructor'} grading a student discussion post.
+  const system = `You are ${instructorBio || 'an expert instructor'} grading a student discussion post. Read carefully before scoring anything.
 
-CRITICAL: Grade ONLY against the ${rubricCriteria.length} criteria listed below. Do not reference any other rubric, assignment, or set of requirements. Do not penalize for anything not explicitly in these criteria.
+CRITICAL: Grade ONLY against the ${rubricCriteria.length} criteria listed below. Do not reference other assignments.
 
-The criteria for THIS assignment are:
+The criteria for THIS assignment:
 ${rubricCriteria.map((c,i) => `${i+1}. ${c.name}`).join('\n')}
 
-Be fair, specific, and constructive. Grade based on what the student actually wrote.
-Be direct — if something is missing say so clearly. Use the student's first name only.
-${exampleContext ? 'Use the calibration examples to calibrate your scoring to this instructor\'s standards.' : ''}
-${gradingGuidance ? `\nINSTRUCTOR EXCEPTIONS — DO NOT PENALIZE FOR THESE:\n${gradingGuidance}` : ''}`;
-
+GRADING STANDARDS:
+- Half-point scores (12.5, 13.5 etc) are valid — use them when work falls between tiers
+- Reference specific words or choices from the submission, not generic observations
+- If the student almost makes a key connection but misses it, say exactly what they missed
+- If a required deliverable is absent or failed to render, flag it explicitly
+- If the student's own reasoning undercuts their argument, point that out
+- Be honest about weak work — a 10-12 should feel clearly different from 13-15
+${exampleContext ? "Use the calibration examples to anchor your scoring." : ""}
+${gradingGuidance ? `\nINSTRUCTOR EXCEPTIONS — DO NOT PENALIZE FOR THESE:\n${gradingGuidance}` : ""}`;
   const toneMap = {
     'plain-warm':    'Write in plain, conversational English. Be warm and encouraging but not stiff. Sound like a real person, not a form letter. Avoid academic or corporate language.',
     'plain':         'Write in plain, direct English. Short sentences. No filler words. Get to the point. Sound like a colleague giving honest feedback.',
@@ -180,12 +184,12 @@ ${gradingGuidance ? `\nINSTRUCTOR EXCEPTIONS — DO NOT PENALIZE FOR THESE:\n${g
 
   // Skill assessment mode: deeper, more pointed per-criterion feedback
   const criterionCommentInstruction = isSkillAssessment
-    ? `2-4 sentences. ${toneInstructions} Be specific and direct. Name the exact thing they did well or the exact gap. Reference something they actually wrote. Tell them what a stronger version would look like.`
-    : `1-2 sentences. ${toneInstructions} Be specific. Reference something they actually wrote. Only include if score is not perfect.`;
+    ? '2-4 sentences. ' + toneInstructions + ' Be specific and direct. Name the exact thing they did well or the exact gap. Reference something they actually wrote. Tell them what a stronger version would look like.'
+    : '1-2 sentences. ' + toneInstructions + ' Be specific. Reference something they actually wrote. Only include if score is not perfect.';
 
   const paragraphInstruction = isSkillAssessment
-    ? `${toneInstructions} ${styleInstruction} Write ${sentenceCount} sentences. Start with first name. Name the specific intellectual move they made. Compare briefly to what most students do. Be honest about gaps. End with something personal and forward-looking. Max 20 words per sentence.`
-    : `${toneInstructions} ${styleInstruction} Start with the student's first name. ${sentenceCount} sentences total. Max 18 words per sentence. No jargon. Write like you're talking to them directly.`;
+    ? toneInstructions + ' ' + styleInstruction + ' Write ' + sentenceCount + ' sentences. Start with first name. Name the specific intellectual move they made. Compare briefly to what most students do. Be honest about gaps. End with something personal and forward-looking. Max 20 words per sentence.'
+    : toneInstructions + ' ' + styleInstruction + ' Start with the student first name. ' + sentenceCount + ' sentences total. Max 18 words per sentence. No jargon. Write like talking to them directly.';
 
   const prompt = `DISCUSSION QUESTION:
 ${discussionQuestion || 'No question provided'}
@@ -210,7 +214,8 @@ Return ONLY valid JSON, no markdown fences:
       "criterionName": "criterion name",
       "suggestedRating": "Accomplished | Proficient | Needs Improvement | Unacceptable",
       "suggestedPoints": 14.5,
-      "scoringRationale": "2-3 sentences of instructor-only rationale in the style: 'Risk ID (14/15): The scenario is specific and... The deduction is because...'. Reference actual content from the post. Explain exactly why points were deducted if any. Be frank and specific. This is for your reference only.",
+      "scoringRationale": "2-3 sentences. Reference the student's actual words or specific choices. Identify exactly what is strong or what is missing. If the student almost connects a key idea but misses it, say so. If a deliverable is absent or broken, call it out directly. Be a sharp reader, not a checklist.",
+      "halfPointsOk": "scores like 12.5, 13.5 are valid — use them when the work is between tiers",
       "studentComment": "${criterionCommentInstruction}",
       "evidence": "brief quote or paraphrase from submission supporting this rating"
     }
