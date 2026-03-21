@@ -45,8 +45,6 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const stored = sessionStorage.getItem('tp_pw');
-    if (stored) { loadAll(stored); return; }
     loadAll('').catch(() => {});
   }, []); // eslint-disable-line
 
