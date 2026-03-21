@@ -73,6 +73,10 @@ router.post('/grade', async (req, res) => {
     ? db.prepare('SELECT * FROM assignments WHERE id=?').get(assignmentId)
     : null;
   const gradingGuidance = assignmentRecord?.grading_guidance || '';
+  console.log('[discussgrade] assignmentId:', assignmentId);
+  console.log('[discussgrade] assignment name:', assignmentRecord?.name || 'NOT FOUND');
+  console.log('[discussgrade] grading_guidance:', gradingGuidance.slice(0, 100) || '(none)');
+  console.log('[discussgrade] rubric_criteria stored:', !!assignmentRecord?.rubric_criteria);
 
   // Prefer stored rubricCriteria from DB over what client sent
   let rubricCriteria = clientRubric;
