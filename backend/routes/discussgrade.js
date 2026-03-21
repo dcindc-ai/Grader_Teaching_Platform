@@ -191,8 +191,11 @@ ${gradingGuidance ? `\nINSTRUCTOR EXCEPTIONS — DO NOT PENALIZE FOR THESE:\n${g
     ? toneInstructions + ' ' + styleInstruction + ' Write ' + sentenceCount + ' sentences. Start with first name. Name the specific intellectual move they made. Compare briefly to what most students do. Be honest about gaps. End with something personal and forward-looking. Max 20 words per sentence.'
     : toneInstructions + ' ' + styleInstruction + ' Start with the student first name. ' + sentenceCount + ' sentences total. Max 18 words per sentence. No jargon. Write like talking to them directly.';
 
-  const prompt = `DISCUSSION QUESTION:
-${discussionQuestion || 'No question provided'}
+  // Include full assignment description if available — this is what students were asked to do
+  const assignmentInstructions = assignmentRecord?.description || '';
+
+  const prompt = `ASSIGNMENT INSTRUCTIONS (what students were explicitly asked to do):
+${assignmentInstructions || discussionQuestion || 'No instructions provided'}
 
 STUDENT: ${studentName}
 SUBMISSION:
@@ -201,7 +204,9 @@ ${submission}
 RUBRIC CRITERIA:
 ${criteriaText}
 
-Grade this submission. You MUST return a criteriaGrades entry for EVERY criterion below — no exceptions, including criteria where the student scores perfectly.
+Grade this submission. Check it against BOTH the assignment instructions AND the rubric criteria.
+If the assignment instructions required something specific (a distinction, a format, a deliverable) that the student missed, that should affect the score even if the rubric description is vague about it.
+You MUST return a criteriaGrades entry for EVERY criterion — no exceptions.
 
 REQUIRED CRITERIA (you must include all ${rubricCriteria.length} in your response):
 ${rubricCriteria.map((c, i) => `${i+1}. ${c.name}`).join('\n')}
