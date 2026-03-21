@@ -59,8 +59,9 @@ router.post('/parse-rubric', (req, res) => {
 // ─── Grade a discussion submission against a rubric ───────────────────────
 
 router.post('/grade', async (req, res) => {
-  const { courseId, assignmentId, studentName, discussionQuestion, submission, rubricCriteria: clientRubric, instructorBio, tone, sentences } = req.body;
+  const { courseId, assignmentId, studentName, discussionQuestion, submission, rubricCriteria: clientRubric, instructorBio, tone, sentences, submissionType } = req.body;
   const sentenceCount = parseInt(sentences) || 3;
+  const isSkillAssessment = submissionType === 'skill';
 
   if (!submission) {
     return res.status(400).json({ error: 'submission required' });
@@ -143,8 +144,18 @@ ${gradingGuidance ? `\nINSTRUCTOR EXCEPTIONS — DO NOT PENALIZE FOR THESE:\n${g
     'formal':        'Use professional, polished language appropriate for academic feedback.',
   };
   const toneInstructions = tone && !toneMap[tone]
-    ? tone  // custom tone — use as-is
+    ? tone
     : (toneMap[tone] || toneMap['plain-warm']);
+
+  // Skill assessment mode: deeper, more pointed per-criterion feedback
+  const criterionCommentInstruction = isSkillAssessment
+    ? \`2-4 sentences. ${toneInstructions} Be specific and direct — name the exact thing they did well or the exact gap. Reference something they actually wrote or did. Tell them what a stronger version would look like. Treat them like a capable adult who can handle real feedback.\`
+    : \`1-2 sentences. ${toneInstructions} Be specific — reference something they actually wrote. Only include if score is not perfect.\`;
+
+  // Skill assessment paragraph: deeper, more personal, like the instructor example
+  const paragraphInstruction = isSkillAssessment
+    ? \`${toneInstructions} Write ${sentenceCount} sentences. Start with first name. Lead with the most specific, impressive thing they did — not generic praise. Name the actual intellectual move they made. Compare it (briefly) to what most students do so they understand why it stands out. Be honest about gaps — name them directly and say what better looks like. End with something personal and forward-looking. Sound like a mentor who has read every word, not a grader running through a checklist. Max 20 words per sentence.\`
+    : \`${toneInstructions} Start with the student's first name. ${sentenceCount} sentences total. Max 18 words per sentence. No jargon. Write it like you're talking to the student directly.\`;\`
 
   const prompt = `DISCUSSION QUESTION:
 ${discussionQuestion || 'No question provided'}
@@ -170,13 +181,13 @@ Return ONLY valid JSON, no markdown fences:
       "suggestedRating": "Accomplished | Proficient | Needs Improvement | Unacceptable",
       "suggestedPoints": 14.5,
       "scoringRationale": "2-3 sentences of instructor-only rationale in the style: 'Risk ID (14/15): The scenario is specific and... The deduction is because...'. Reference actual content from the post. Explain exactly why points were deducted if any. Be frank and specific. This is for your reference only.",
-      "studentComment": "1-2 sentence comment to share with the student. ${toneInstructions} Be specific — reference something they actually wrote. Only include if score is not perfect.",
+      "studentComment": "${criterionCommentInstruction}",
       "evidence": "brief quote or paraphrase from submission supporting this rating"
     }
   ],
   "totalPoints": 72.5,
   "totalMax": 75,
-  "instructorParagraph": "${toneInstructions} Start with the student's first name. ${sentenceCount} sentences total. Max 18 words per sentence. No jargon. Write it like you're talking to the student directly.",
+  "instructorParagraph": "${paragraphInstruction}",
   "overallSummary": "1-2 sentence overall assessment"
 }`;
 
