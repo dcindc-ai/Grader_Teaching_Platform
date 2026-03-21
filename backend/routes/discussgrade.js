@@ -170,7 +170,7 @@ Return ONLY valid JSON, no markdown fences:
       "suggestedRating": "Accomplished | Proficient | Needs Improvement | Unacceptable",
       "suggestedPoints": 14.5,
       "scoringRationale": "2-3 sentences of instructor-only rationale in the style: 'Risk ID (14/15): The scenario is specific and... The deduction is because...'. Reference actual content from the post. Explain exactly why points were deducted if any. Be frank and specific. This is for your reference only.",
-      "studentComment": "1-2 sentence comment to share with the student. Constructive, specific, references their actual work.",
+      "studentComment": "1-2 sentence comment to share with the student. ${toneInstructions} Be specific — reference something they actually wrote. Only include if score is not perfect.",
       "evidence": "brief quote or paraphrase from submission supporting this rating"
     }
   ],
