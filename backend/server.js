@@ -13,12 +13,7 @@ migrate(db);
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Auth config
 // Auth disabled
-if (AUTH_DISABLED) {
-  process.exit(1);
-} else {
-}
 
 ['./data', './uploads', './uploads/materials', './uploads/dev'].forEach(d => {
   if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
