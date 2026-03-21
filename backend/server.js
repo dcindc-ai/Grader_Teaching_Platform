@@ -14,14 +14,10 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Auth config
-const AUTH_DISABLED = process.env.REQUIRE_PASSWORD === 'false' || !process.env.ADMIN_PASSWORD;
+// Auth disabled
 if (AUTH_DISABLED) {
-  console.log('Auth disabled — no password required (REQUIRE_PASSWORD=false)');
-} else if (!process.env.ADMIN_PASSWORD) {
-  console.error('ERROR: ADMIN_PASSWORD not set. Check your .env file.');
   process.exit(1);
 } else {
-  console.log('Password loaded OK — length:', process.env.ADMIN_PASSWORD.length);
 }
 
 ['./data', './uploads', './uploads/materials', './uploads/dev'].forEach(d => {
@@ -34,10 +30,6 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 app.use('/api', (req, res, next) => {
   if (AUTH_DISABLED) return next();
-  const pw = req.headers['x-admin-password'] || req.query.password;
-  if (pw !== process.env.ADMIN_PASSWORD) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
   next();
 });
 

@@ -8,7 +8,7 @@ import './App.css';
 
 export default function App() {
   const [pw, setPw] = useState(() => sessionStorage.getItem('tp_pw') || '');
-  const [authed, setAuthed] = useState(false);
+  const [authed, setAuthed] = useState(true);
   const [authErr, setAuthErr] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -32,18 +32,14 @@ export default function App() {
   const loadAll = useCallback(async (password) => {
     setLoading(true);
     try {
-      const [cs, st] = await Promise.all([getCourses(password), getCorpusStats(password)]);
+      const [cs, st] = await Promise.all([getCourses(''), getCorpusStats('')]);
       setCourses(cs);
       setStats(st);
       setActiveCourse(null);
       setView('home');
       setAuthed(true);
-      sessionStorage.setItem('tp_pw', password);
     } catch (e) {
-      sessionStorage.removeItem('tp_pw');
-      setAuthed(false);
-      setPw('');
-      setAuthErr('Incorrect password. Please type it again.');
+      console.error('Load error:', e);
     }
     setLoading(false);
   }, []);
