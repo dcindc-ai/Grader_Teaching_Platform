@@ -29,7 +29,6 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 app.use('/api', (req, res, next) => {
-  if (AUTH_DISABLED) return next();
   next();
 });
 
