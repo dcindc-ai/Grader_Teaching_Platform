@@ -34,14 +34,18 @@ router.put('/:id', (req, res) => {
     : undefined; // undefined = don't touch it
 
   if (rubricCriteriaValue !== undefined) {
-    db.prepare('UPDATE assignments SET name=?,type=?,max_score=?,display_order=?,description=?,rubric=?,rubric_criteria=?,grading_guidance=?,canvas_assignment_id=? WHERE id=?')
+    db.prepare('UPDATE assignments SET name=?,type=?,max_score=?,display_order=?,description=?,rubric=?,rubric_criteria=?,grading_guidance=?,canvas_assignment_id=?,target_avg=?,grading_strictness=? WHERE id=?')
       .run(b.name, b.type, b.maxScore, b.order, b.description, b.rubric,
         rubricCriteriaValue,
-        b.gradingGuidance || '', b.canvasAssignmentId || '', req.params.id);
+        b.gradingGuidance || '', b.canvasAssignmentId || '',
+        b.targetAvg ?? 4.5, b.gradingStrictness || 'standard',
+        req.params.id);
   } else {
-    db.prepare('UPDATE assignments SET name=?,type=?,max_score=?,display_order=?,description=?,rubric=?,grading_guidance=?,canvas_assignment_id=? WHERE id=?')
+    db.prepare('UPDATE assignments SET name=?,type=?,max_score=?,display_order=?,description=?,rubric=?,grading_guidance=?,canvas_assignment_id=?,target_avg=?,grading_strictness=? WHERE id=?')
       .run(b.name, b.type, b.maxScore, b.order, b.description, b.rubric,
-        b.gradingGuidance || '', b.canvasAssignmentId || '', req.params.id);
+        b.gradingGuidance || '', b.canvasAssignmentId || '',
+        b.targetAvg ?? 4.5, b.gradingStrictness || 'standard',
+        req.params.id);
   }
   res.json(parseAssignment(db.prepare('SELECT * FROM assignments WHERE id=?').get(req.params.id)));
 });
