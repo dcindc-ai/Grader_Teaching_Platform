@@ -123,7 +123,7 @@ ${submission}
 RUBRIC CRITERIA:
 ${criteriaText}
 
-Grade this submission against each criterion. Return ONLY valid JSON, no markdown fences:
+Grade this submission against EVERY criterion listed above. You MUST return a criteriaGrades entry for ALL ${rubricCriteria.length} criteria — including criteria where the student scored perfectly. Do not skip any criterion. Return ONLY valid JSON, no markdown fences:
 {
   "criteriaGrades": [
     {
