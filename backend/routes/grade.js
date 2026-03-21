@@ -564,7 +564,13 @@ router.get('/download', async (req, res) => {
       const font = await doc.embedFont(StandardFonts.Helvetica);
       const bold = await doc.embedFont(StandardFonts.HelveticaBold);
       const italic = await doc.embedFont(StandardFonts.HelveticaOblique);
-      const RED=rgb(0.8,0.1,0.1),GREEN=rgb(0.1,0.5,0.1),BLACK=rgb(0,0,0),GRAY=rgb(0.4,0.4,0.4),LIGHT=rgb(0.95,0.95,0.95),BLUE=rgb(0.1,0.3,0.7);
+      // Use course color for PDF
+      function hexToRgbPdf(hex) {
+        const h=(hex||'1a4fbf').replace('#','');
+        return rgb(parseInt(h.slice(0,2),16)/255,parseInt(h.slice(2,4),16)/255,parseInt(h.slice(4,6),16)/255);
+      }
+      const courseHex = course?.color || '#1a4fbf';
+      const RED=rgb(0.8,0.1,0.1),GREEN=rgb(0.1,0.5,0.1),BLACK=rgb(0,0,0),GRAY=rgb(0.4,0.4,0.4),LIGHT=rgb(0.95,0.95,0.95),BLUE=hexToRgbPdf(courseHex);
       const W=612,H=792,M=54,LH=16,CW=W-M*2;
       let page=doc.addPage([W,H]);let y=H-M;
       function np(){page=doc.addPage([W,H]);y=H-M;}

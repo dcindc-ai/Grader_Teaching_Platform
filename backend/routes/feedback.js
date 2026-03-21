@@ -73,11 +73,15 @@ router.get('/docx/:gradeId', async (req, res) => {
       LevelFormat
     , ExternalHyperlink} = require('docx');
 
-    const BLUE = '2563EB';
+    // Use course color scheme
+    const courseColor = (course?.color || '#2563EB').replace('#','');
+    const courseDark = (course?.colorDark || course?.color || '#1D4ED8').replace('#','');
+    const BLUE = courseColor;
+    const BLUE_DARK = courseDark;
     const GREEN = '16A34A';
     const RED = 'DC2626';
     const GRAY = '6B7280';
-    const LIGHT_BLUE = 'EFF6FF';
+    const LIGHT_BLUE = courseColor + '18';
     const LIGHT_GREEN = 'F0FDF4';
     const LIGHT_RED = 'FEF2F2';
     const LIGHT_GRAY = 'F9FAFB';
@@ -401,7 +405,15 @@ router.get('/redlined-pdf/:gradeId', async (req, res) => {
   try {
     const { PDFDocument, rgb, StandardFonts, degrees } = require('pdf-lib');
 
-    const BLUE = rgb(0.15, 0.39, 0.92);
+    // Parse course color for PDF (hex to 0-1 rgb)
+    function hexToRgb(hex) {
+      const h = (hex || '2563EB').replace('#','');
+      const r = parseInt(h.slice(0,2),16)/255;
+      const g = parseInt(h.slice(2,4),16)/255;
+      const b = parseInt(h.slice(4,6),16)/255;
+      return rgb(r,g,b);
+    }
+    const BLUE = hexToRgb(course?.color);
     const RED = rgb(0.86, 0.15, 0.15);
     const GREEN = rgb(0.09, 0.64, 0.29);
     const AMBER = rgb(0.85, 0.47, 0.04);
@@ -437,7 +449,7 @@ router.get('/redlined-pdf/:gradeId', async (req, res) => {
             // Draw semi-transparent header bar
             embeddedPage.drawRectangle({
               x: 0, y: height - 28, width, height: 28,
-              color: rgb(0.12, 0.25, 0.58), opacity: 0.9
+              color: hexToRgb(course?.color), opacity: 0.9
             });
             embeddedPage.drawText(`INSTRUCTOR COMMENTS — ${grade.studentName || 'Student'}  |  Score: ${grade.total}/${grade.maxScore}`, {
               x: 10, y: height - 18, size: 9, font: bold, color: WHITE, opacity: 1
