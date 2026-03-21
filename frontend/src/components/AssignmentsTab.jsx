@@ -149,11 +149,43 @@ export default function AssignmentsTab({ course, password }) {
           <span style={{ fontSize: 12, color: 'var(--text2)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Assignments</span>
           <button style={{ fontSize: 11, padding: '3px 8px' }} onClick={handleAddAssignment}>+ Add</button>
         </div>
-        {assignments.sort((a,b) => a.order-b.order).map(a => (
-          <div key={a.id} onClick={() => selectAssignment(a)} className="card card-hover"
-            style={{ marginBottom: 5, padding: '9px 12px', borderColor: selected?.id === a.id ? course.color : undefined, borderWidth: selected?.id === a.id ? 2 : 1 }}>
-            <div style={{ fontSize: 13, fontWeight: selected?.id === a.id ? 600 : 400 }}>{a.name}</div>
-            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 1 }}>{a.type} · {a.maxScore}pts</div>
+        {assignments.sort((a,b) => a.order-b.order).map((a, idx) => (
+          <div key={a.id}
+            draggable
+            onDragStart={e => { e.dataTransfer.setData('text/plain', a.id); e.currentTarget.style.opacity = '0.4'; }}
+            onDragEnd={e => { e.currentTarget.style.opacity = '1'; }}
+            onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = course.color; }}
+            onDragLeave={e => { e.currentTarget.style.borderColor = ''; }}
+            onDrop={async e => {
+              e.preventDefault();
+              e.currentTarget.style.borderColor = '';
+              const draggedId = e.dataTransfer.getData('text/plain');
+              if (draggedId === a.id) return;
+              const sorted = [...assignments].sort((x,y) => x.order - y.order);
+              const fromIdx = sorted.findIndex(x => x.id === draggedId);
+              const toIdx = sorted.findIndex(x => x.id === a.id);
+              const reordered = [...sorted];
+              const [moved] = reordered.splice(fromIdx, 1);
+              reordered.splice(toIdx, 0, moved);
+              // Update order field on each
+              const updated = reordered.map((x, i) => ({ ...x, order: i + 1 }));
+              setAssignments(updated);
+              // Persist order to backend
+              for (const x of updated) {
+                await updateAssignment(x.id, { ...x, rubricCriteria: x.rubricCriteria }, password);
+              }
+            }}
+            onClick={() => selectAssignment(a)}
+            className="card card-hover"
+            style={{ marginBottom: 5, padding: '9px 12px', cursor: 'grab',
+              borderColor: selected?.id === a.id ? course.color : undefined,
+              borderWidth: selected?.id === a.id ? 2 : 1,
+              display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 14, color: 'var(--text3)', cursor: 'grab', flexShrink: 0 }}>⠿</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: selected?.id === a.id ? 600 : 400 }}>{a.name}</div>
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 1 }}>{a.type} · {a.maxScore}pts</div>
+            </div>
           </div>
         ))}
       </div>

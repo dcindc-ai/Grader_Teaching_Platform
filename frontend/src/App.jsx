@@ -3,6 +3,7 @@ import { getCourses, getCorpusStats } from './api.js';
 import CourseShell from './components/CourseShell.jsx';
 import CorpusView from './components/CorpusView.jsx';
 import DevTab from './components/DevTab.jsx';
+import HomeDashboard from './components/HomeDashboard.jsx';
 import './App.css';
 
 export default function App() {
@@ -13,7 +14,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [courses, setCourses] = useState([]);
   const [activeCourse, setActiveCourse] = useState(null);
-  const [view, setView] = useState('course');
+  const [view, setView] = useState('home');
   const [stats, setStats] = useState(null);
 
   // ── Persisted cross-tab state ──────────────────────────────────────────
@@ -34,7 +35,8 @@ export default function App() {
       const [cs, st] = await Promise.all([getCourses(password), getCorpusStats(password)]);
       setCourses(cs);
       setStats(st);
-      setActiveCourse(cs[0]?.id || null);
+      setActiveCourse(null);
+      setView('home');
       setAuthed(true);
       sessionStorage.setItem('tp_pw', password);
     } catch (e) {
@@ -151,6 +153,12 @@ export default function App() {
           <span className="topbar-name">Always On Learning</span>
         </div>
         <nav className="topbar-nav">
+          <button
+            className={`course-tab${view === 'home' ? ' active' : ''}`}
+            onClick={() => setView('home')}
+          >
+            ⌂ Home
+          </button>
           {courses.map(c => (
             <button
               key={c.id}
@@ -197,6 +205,13 @@ export default function App() {
       </header>
 
       <div className="app-body">
+        {view === 'home' && (
+          <HomeDashboard
+            courses={courses}
+            stats={stats}
+            onSelectCourse={id => { setActiveCourse(id); setView('course'); }}
+          />
+        )}
         {view === 'course' && course && (
           <CourseShell
             key={course.id}
