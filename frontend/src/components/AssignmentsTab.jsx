@@ -17,6 +17,29 @@ export default function AssignmentsTab({ course, password }) {
   const [exForm, setExForm] = useState({ studentName: '', score: '4', quality: 'good', notes: '', content: '' });
   const [parsing, setParsing] = useState(false);
   const pdfRef = useRef();
+  const csvRef = useRef();
+  const [importingCsv, setImportingCsv] = useState(false);
+
+  async function importRubricCSV(text) {
+    setImportingCsv(true);
+    try {
+      const r = await fetch(`${BASE}/api/discussgrade/parse-rubric`, {
+        method: 'POST',
+        headers: { 'x-admin-password': password, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ csv: text })
+      });
+      const d = await r.json();
+      if (d.error) throw new Error(d.error);
+      // Build human-readable rubric text
+      const rubricText = d.criteria.map((c, i) =>
+        `CRITERION ${i+1}: ${c.name} (${c.maxPoints} pts)\n` +
+        c.ratings.map(r => `- ${r.name} (${r.points} pts): ${r.description}`).join('\n')
+      ).join('\n\n');
+      setForm(f => ({ ...f, rubric: rubricText, rubricCriteria: d.criteria, maxScore: d.totalMax }));
+      alert(`✓ Rubric loaded: ${d.criteria.length} criteria, ${d.totalMax} pts total`);
+    } catch(e) { alert('CSV import error: ' + e.message); }
+    setImportingCsv(false);
+  }
 
   useEffect(() => {
     getAssignments(course.id, password).then(a => {
@@ -210,13 +233,21 @@ export default function AssignmentsTab({ course, password }) {
               <div className="field">
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
                   <label style={{ margin:0 }}>Rubric</label>
-                  {(form.rubric || form.rubricCriteria) && (
-                    <button onClick={() => setForm(f=>({...f, rubric:'', rubricCriteria:null}))}
-                      style={{ fontSize:11, color:'var(--red)', padding:'2px 8px', borderRadius:4,
-                        border:'1px solid var(--red)', background:'transparent', cursor:'pointer' }}>
-                      🗑 Clear rubric
+                  <div style={{ display:'flex', gap:6 }}>
+                    <input ref={csvRef} type="file" accept=".csv" style={{ display:'none' }}
+                      onChange={async e => { const f = e.target.files[0]; if (f) { importRubricCSV(await f.text()); e.target.value=''; }}} />
+                    <button onClick={() => csvRef.current.click()} disabled={importingCsv}
+                      style={{ fontSize:11, padding:'2px 8px', borderRadius:4, border:'1px solid var(--border)', background:'var(--bg2)', cursor:'pointer' }}>
+                      {importingCsv ? 'Importing…' : '📊 Import CSV'}
                     </button>
-                  )}
+                    {(form.rubric || form.rubricCriteria) && (
+                      <button onClick={() => setForm(f=>({...f, rubric:'', rubricCriteria:null}))}
+                        style={{ fontSize:11, color:'var(--red)', padding:'2px 8px', borderRadius:4,
+                          border:'1px solid var(--red)', background:'transparent', cursor:'pointer' }}>
+                        🗑 Clear
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <textarea rows={12} value={form.rubric||''} onChange={e => setForm(f=>({...f,rubric:e.target.value}))} style={{ fontFamily:'var(--mono)',fontSize:12 }} />
               </div>
