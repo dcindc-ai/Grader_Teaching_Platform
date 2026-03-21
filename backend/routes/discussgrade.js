@@ -136,6 +136,16 @@ Be direct — if something is missing say so clearly. Use the student's first na
 ${exampleContext ? 'Use the calibration examples to calibrate your scoring to this instructor\'s standards.' : ''}
 ${gradingGuidance ? `\nINSTRUCTOR EXCEPTIONS — DO NOT PENALIZE FOR THESE:\n${gradingGuidance}` : ''}`;
 
+  const toneMap = {
+    'plain-warm':    'Write in plain, conversational English. Be warm and encouraging but not stiff. Sound like a real person, not a form letter. Avoid academic or corporate language.',
+    'plain':         'Write in plain, direct English. Short sentences. No filler words. Get to the point. Sound like a colleague giving honest feedback.',
+    'encouraging':   'Be genuinely encouraging. Celebrate what they did well before addressing gaps. Use energy and enthusiasm. Make them want to do better.',
+    'formal':        'Use professional, polished language appropriate for academic feedback.',
+  };
+  const toneInstructions = tone && !toneMap[tone]
+    ? tone  // custom tone — use as-is
+    : (toneMap[tone] || toneMap['plain-warm']);
+
   const prompt = `DISCUSSION QUESTION:
 ${discussionQuestion || 'No question provided'}
 
@@ -166,7 +176,7 @@ Return ONLY valid JSON, no markdown fences:
   ],
   "totalPoints": 72.5,
   "totalMax": 75,
-  "instructorParagraph": "Personalized ${sentenceCount}-sentence paragraph in instructor voice. Start with first name. Acknowledge specific strength. Give honest critical feedback. Warm but direct. Max 18 words per sentence.",
+  "instructorParagraph": "${toneInstructions} Start with the student's first name. ${sentenceCount} sentences total. Max 18 words per sentence. No jargon. Write it like you're talking to the student directly.",
   "overallSummary": "1-2 sentence overall assessment"
 }`;
 
