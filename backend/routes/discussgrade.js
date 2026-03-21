@@ -149,13 +149,12 @@ ${gradingGuidance ? `\nINSTRUCTOR EXCEPTIONS — DO NOT PENALIZE FOR THESE:\n${g
 
   // Skill assessment mode: deeper, more pointed per-criterion feedback
   const criterionCommentInstruction = isSkillAssessment
-    ? \`2-4 sentences. ${toneInstructions} Be specific and direct — name the exact thing they did well or the exact gap. Reference something they actually wrote or did. Tell them what a stronger version would look like. Treat them like a capable adult who can handle real feedback.\`
-    : \`1-2 sentences. ${toneInstructions} Be specific — reference something they actually wrote. Only include if score is not perfect.\`;
+    ? `2-4 sentences. ${toneInstructions} Be specific and direct. Name the exact thing they did well or the exact gap. Reference something they actually wrote. Tell them what a stronger version would look like.`
+    : `1-2 sentences. ${toneInstructions} Be specific. Reference something they actually wrote. Only include if score is not perfect.`;
 
-  // Skill assessment paragraph: deeper, more personal, like the instructor example
   const paragraphInstruction = isSkillAssessment
-    ? \`${toneInstructions} Write ${sentenceCount} sentences. Start with first name. Lead with the most specific, impressive thing they did — not generic praise. Name the actual intellectual move they made. Compare it (briefly) to what most students do so they understand why it stands out. Be honest about gaps — name them directly and say what better looks like. End with something personal and forward-looking. Sound like a mentor who has read every word, not a grader running through a checklist. Max 20 words per sentence.\`
-    : \`${toneInstructions} Start with the student's first name. ${sentenceCount} sentences total. Max 18 words per sentence. No jargon. Write it like you're talking to the student directly.\`;\`
+    ? `${toneInstructions} Write ${sentenceCount} sentences. Start with first name. Lead with the most specific thing they did well. Name the intellectual move they made. Compare briefly to what most students do. Be honest about gaps. End with something personal and forward-looking. Max 20 words per sentence.`
+    : `${toneInstructions} Start with the student's first name. ${sentenceCount} sentences total. Max 18 words per sentence. No jargon. Write like you're talking to them directly.`;
 
   const prompt = `DISCUSSION QUESTION:
 ${discussionQuestion || 'No question provided'}
