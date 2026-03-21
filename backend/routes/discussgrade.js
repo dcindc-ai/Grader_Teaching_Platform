@@ -150,7 +150,7 @@ Return ONLY valid JSON, no markdown fences:
   try {
     const resp = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 2000,
+      max_tokens: 4000,
       system,
       messages: [{ role: 'user', content: prompt }]
     });
