@@ -207,8 +207,19 @@ export default function AssignmentsTab({ course, password }) {
 
               <div className="field"><label>Description</label>
                 <textarea rows={8} value={form.description||''} onChange={e => setForm(f=>({...f,description:e.target.value}))} style={{ fontFamily:'var(--mono)',fontSize:12 }} /></div>
-              <div className="field"><label>Rubric</label>
-                <textarea rows={12} value={form.rubric||''} onChange={e => setForm(f=>({...f,rubric:e.target.value}))} style={{ fontFamily:'var(--mono)',fontSize:12 }} /></div>
+              <div className="field">
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
+                  <label style={{ margin:0 }}>Rubric</label>
+                  {(form.rubric || form.rubricCriteria) && (
+                    <button onClick={() => setForm(f=>({...f, rubric:'', rubricCriteria:null}))}
+                      style={{ fontSize:11, color:'var(--red)', padding:'2px 8px', borderRadius:4,
+                        border:'1px solid var(--red)', background:'transparent', cursor:'pointer' }}>
+                      🗑 Clear rubric
+                    </button>
+                  )}
+                </div>
+                <textarea rows={12} value={form.rubric||''} onChange={e => setForm(f=>({...f,rubric:e.target.value}))} style={{ fontFamily:'var(--mono)',fontSize:12 }} />
+              </div>
               <div className="field">
                 <label>Canvas Assignment ID <span style={{ fontWeight:400, color:'var(--text3)', fontSize:11 }}>— from Canvas assignment URL, e.g. /assignments/665907</span></label>
                 <input type="text" value={form.canvasAssignmentId||''} onChange={e => setForm(f=>({...f,canvasAssignmentId:e.target.value}))}
@@ -272,8 +283,19 @@ export default function AssignmentsTab({ course, password }) {
               )}
               {selected.rubric && (
                 <div className="card" style={{ marginBottom: 16 }}>
-                  <div className="sec-label">Rubric</div>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
+                    <div className="sec-label" style={{ margin:0 }}>Rubric</div>
+                    {selected.rubricCriteria
+                      ? <span style={{ fontSize:11, color:'var(--green)', fontWeight:600 }}>✓ {Array.isArray(selected.rubricCriteria) ? selected.rubricCriteria.length : '?'} criteria parsed</span>
+                      : <span style={{ fontSize:11, color:'var(--text3)' }}>No parsed criteria — will use Canvas rubric</span>
+                    }
+                  </div>
                   <pre style={{ fontFamily:'var(--mono)',fontSize:11,color:'var(--text2)',whiteSpace:'pre-wrap',lineHeight:1.6 }}>{selected.rubric}</pre>
+                </div>
+              )}
+              {!selected.rubric && selected.rubricCriteria && (
+                <div className="card" style={{ marginBottom: 16, borderColor:'var(--red)' }}>
+                  <div style={{ fontSize:12, color:'var(--red)', fontWeight:600 }}>⚠ Stale parsed criteria in database — rubric text is empty but criteria are stored. Click Edit → Clear rubric → Save to fix.</div>
                 </div>
               )}
             </>
