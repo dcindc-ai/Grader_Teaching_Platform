@@ -239,6 +239,7 @@ Return ONLY valid JSON, no markdown fences:
       const base64Data = screenshotData.split(',')[1];
       const mediaType = screenshotData.split(';')[0].split(':')[1];
       messageContent = [
+        { type: 'text', text: 'IMPORTANT: The attached image is part of the student submission. Examine it carefully before grading. It may contain before/after prompts, tables, diagrams, or formatted code. If you see original/refined prompts, a prompt table, code blocks, or any structured deliverable in the image — that counts as meeting that requirement. Do not penalize for missing deliverables that are visible in the image.' },
         {
           type: 'image',
           source: { type: 'base64', media_type: mediaType, data: base64Data }
