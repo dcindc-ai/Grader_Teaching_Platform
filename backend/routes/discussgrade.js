@@ -59,7 +59,7 @@ router.post('/parse-rubric', (req, res) => {
 // ─── Grade a discussion submission against a rubric ───────────────────────
 
 router.post('/grade', async (req, res) => {
-  const { courseId, assignmentId, studentName, discussionQuestion, submission, rubricCriteria: clientRubric, instructorBio, tone, sentences, submissionType, feedbackStyle, syncOnly, manualGrade, screenshotData } = req.body;
+  const { courseId, assignmentId, studentName, discussionQuestion, submission, rubricCriteria: clientRubric, instructorBio, tone, sentences, submissionType, feedbackStyle, syncOnly, manualGrade, screenshotData, attachedFiles } = req.body;
 
   // Sync-only mode — save manual Canvas grades back to platform without re-grading
   if (syncOnly && manualGrade && assignmentId && courseId) {
@@ -232,21 +232,44 @@ Return ONLY valid JSON, no markdown fences:
 }`;
 
   try {
-    // Build message content — add screenshot if provided
+    // Build message content — include all attached files (images + PDFs) + screenshot
     let messageContent;
+    const allFiles = attachedFiles || [];
+    const hasScreenshot = screenshotData && screenshotData.startsWith('data:image/');
+    const hasFiles = allFiles.length > 0;
+
     console.log('[discussgrade] screenshotData received:', screenshotData ? screenshotData.length + ' chars' : 'NONE');
-    if (screenshotData && screenshotData.startsWith('data:image/')) {
-      const base64Data = screenshotData.split(',')[1];
-      const mediaType = screenshotData.split(';')[0].split(':')[1];
-      messageContent = [
-        { type: 'text', text: 'IMPORTANT: The attached image is part of the student submission. Examine it carefully before grading. It may contain before/after prompts, tables, diagrams, or formatted code. If you see original/refined prompts, a prompt table, code blocks, or any structured deliverable in the image — that counts as meeting that requirement. Do not penalize for missing deliverables that are visible in the image.' },
-        {
-          type: 'image',
-          source: { type: 'base64', media_type: mediaType, data: base64Data }
-        },
-        { type: 'text', text: prompt }
-      ];
-      console.log('[discussgrade] Including screenshot in grading call');
+    console.log('[discussgrade] attachedFiles received:', allFiles.length);
+
+    if (hasFiles || hasScreenshot) {
+      const parts = [];
+      parts.push({ type: 'text', text: 'IMPORTANT: The attached files are part of the student submission. Examine everything carefully before grading. Images may contain before/after prompts, tables, diagrams, or formatted code. PDFs are the full submitted document. If you see required deliverables in any attached file — that counts as meeting that requirement. Do not penalize for missing items that are present in the attached files.' });
+
+      // Add each attached file
+      for (const file of allFiles) {
+        if (!file.data) continue;
+        const base64 = file.data.split(',')[1];
+        const mediaType = file.data.split(';')[0].split(':')[1];
+
+        if (mediaType === 'application/pdf') {
+          parts.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } });
+          console.log('[discussgrade] Including PDF:', file.name);
+        } else if (mediaType && mediaType.startsWith('image/')) {
+          parts.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } });
+          console.log('[discussgrade] Including image:', file.name);
+        }
+      }
+
+      // Add auto-screenshot if no files attached
+      if (!hasFiles && hasScreenshot) {
+        const base64Data = screenshotData.split(',')[1];
+        const mediaType = screenshotData.split(';')[0].split(':')[1];
+        parts.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data: base64Data } });
+        console.log('[discussgrade] Including auto-screenshot');
+      }
+
+      parts.push({ type: 'text', text: prompt });
+      messageContent = parts;
     } else {
       messageContent = prompt;
     }
