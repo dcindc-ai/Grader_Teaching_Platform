@@ -304,15 +304,39 @@ async function gradeOne(filePath, assignment, course, skipAlwaysOn=false, origin
   const nameToCheck = (originalName || filePath || '').toLowerCase();
   const isDocx = nameToCheck.endsWith('.docx') || nameToCheck.endsWith('.doc');
 
-  // Extract text from Word docs using mammoth
+  // Extract text AND images from Word docs using mammoth + JSZip
   let docxText = '';
+  let docxImages = []; // array of {base64, mediaType}
   if (isDocx) {
     try {
       const mammoth = require('mammoth');
-      const result = await mammoth.extractRawText({ buffer: fileBuffer });
-      docxText = result.value || '';
-      console.log(`[grade] Word doc extracted: ${docxText.length} chars`);
-      if (!docxText.trim()) throw new Error('Empty text extracted from Word doc');
+
+      // Extract text
+      const textResult = await mammoth.extractRawText({ buffer: fileBuffer });
+      docxText = textResult.value || '';
+      console.log(`[grade] Word doc text extracted: ${docxText.length} chars`);
+
+      // Extract embedded images from the docx zip
+      try {
+        const JSZip = require('jszip');
+        const zip = await JSZip.loadAsync(fileBuffer);
+        const imageFiles = Object.keys(zip.files).filter(name =>
+          name.startsWith('word/media/') && /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(name)
+        );
+        for (const imgPath of imageFiles.slice(0, 5)) { // max 5 images
+          const imgData = await zip.files[imgPath].async('base64');
+          const ext = imgPath.split('.').pop().toLowerCase();
+          const mediaType = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' :
+                           ext === 'png' ? 'image/png' :
+                           ext === 'gif' ? 'image/gif' : 'image/jpeg';
+          docxImages.push({ base64: imgData, mediaType });
+        }
+        console.log(`[grade] Word doc images extracted: ${docxImages.length}`);
+      } catch(imgErr) {
+        console.warn('[grade] Image extraction failed:', imgErr.message);
+      }
+
+      if (!docxText.trim() && docxImages.length === 0) throw new Error('Empty document — no text or images found');
     } catch(e) {
       console.error('[grade] Word doc extraction failed:', e.message);
       throw new Error('Could not read Word document. Try saving as PDF and uploading that instead. (' + e.message + ')');
@@ -333,12 +357,24 @@ async function gradeOne(filePath, assignment, course, skipAlwaysOn=false, origin
   `).all(course.id, assignment.id);
 
   // Build message content based on file type
-  const gradeMessageContent = isDocx && docxText
-    ? [{ type: 'text', text: 'STUDENT SUBMISSION (Word document):\n\n' + docxText + '\n\nGrade this student submission. Return only the JSON.' }]
-    : [
-        { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } },
-        { type: 'text', text: 'Grade this student submission. Return only the JSON.' }
-      ];
+  let gradeMessageContent;
+  if (isDocx) {
+    gradeMessageContent = [];
+    if (docxImages.length > 0) {
+      gradeMessageContent.push({ type: 'text', text: `STUDENT SUBMISSION (Word document with ${docxImages.length} embedded image(s)):\n\n${docxText}\n\nThe student's visual model/diagram is in the image(s) below. Examine them carefully before grading visual components.` });
+      for (const img of docxImages) {
+        gradeMessageContent.push({ type: 'image', source: { type: 'base64', media_type: img.mediaType, data: img.base64 } });
+      }
+    } else {
+      gradeMessageContent.push({ type: 'text', text: 'STUDENT SUBMISSION (Word document):\n\n' + docxText });
+    }
+    gradeMessageContent.push({ type: 'text', text: 'Grade this student submission. Return only the JSON.' });
+  } else {
+    gradeMessageContent = [
+      { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } },
+      { type: 'text', text: 'Grade this student submission. Return only the JSON.' }
+    ];
+  }
 
   const resp = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
