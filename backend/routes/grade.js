@@ -115,7 +115,7 @@ function buildGradePrompt(assignment, course, examples, materials) {
   const sliders = JSON.parse(course.sliders || '{}');
   const sliderStr = DIMS.map(d => `${d}: ${sliders[d]||3}/5`).join(', ');
   const exStr = examples.length
-    ? examples.map(e => `EXAMPLE — ${e.student_name} (${e.score}/${assignment.max_score}${e.quality==='weak'?' WEAK':' GOOD'}):\nNotes: ${e.notes || ''}\n${e.content || ''}`).join('\n\n---\n\n')
+    ? examples.map(e => `EXAMPLE — ${e.student_name} (${e.score}/${assignment.max_score}${e.quality==='weak'?' WEAK':' GOOD'}):\nNotes: ${e.notes || ''}\n${(e.content || '').slice(0, 600)}`).join('\n\n---\n\n')
     : 'No calibration examples yet.';
   const matStr = materials.length
     ? `
@@ -301,7 +301,7 @@ async function gradeOne(filePath, assignment, course, skipAlwaysOn=false) {
   }
   const base64 = fs.readFileSync(filePath).toString('base64');
 
-  const examples = db.prepare('SELECT * FROM examples WHERE assignment_id=?').all(assignment.id);
+  const examples = db.prepare('SELECT * FROM examples WHERE assignment_id=? ORDER BY created_at DESC LIMIT 3').all(assignment.id);
   // Pull lecture materials first, then other materials
   // Lecture = directly assessed. Reference/example = context only.
   const materials = db.prepare(`
