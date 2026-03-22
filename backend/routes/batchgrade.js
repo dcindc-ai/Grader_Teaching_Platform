@@ -44,8 +44,16 @@ router.post('/start', async (req, res) => {
   const canvasUrl = (course.canvas_url || '').replace(/\/$/, '');
   const canvasToken = course.canvas_token;
   const canvasAssignmentId = assignment.canvas_assignment_id;
+  console.log('[batchgrade] canvasUrl:', canvasUrl ? 'set' : 'MISSING');
+  console.log('[batchgrade] canvasToken:', canvasToken ? 'set' : 'MISSING');
+  console.log('[batchgrade] canvasAssignmentId:', canvasAssignmentId || 'MISSING');
+
   if (!canvasUrl || !canvasToken || !canvasAssignmentId)
-    return res.status(400).json({ error: 'Canvas URL, token, and Assignment ID required' });
+    return res.status(400).json({ error: 
+      !canvasUrl ? 'Canvas URL not set — go to Course Settings → Canvas Integration' :
+      !canvasToken ? 'Canvas token not set — go to Course Settings → Canvas Integration' :
+      'Canvas Assignment ID not set — go to Assignments → Edit → Canvas Assignment ID field'
+    });
 
   const urlMatch = canvasUrl.match(/courses\/(\d+)/);
   const canvasCourseId = urlMatch?.[1];
