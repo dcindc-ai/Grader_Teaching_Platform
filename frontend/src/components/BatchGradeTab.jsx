@@ -23,6 +23,13 @@ export default function BatchGradeTab({ course, password }) {
   const [gradingAll, setGradingAll] = useState(false);
   const [gradingProgress, setGradingProgress] = useState(0);
 
+  // Grading presets
+  const [tone, setTone] = useState('plain-warm');
+  const [sentences, setSentences] = useState(3);
+  const [commentMode, setCommentMode] = useState('imperfect');
+  const [feedbackStyle, setFeedbackStyle] = useState('balanced');
+  const [showPresets, setShowPresets] = useState(false);
+
   useEffect(() => {
     getAssignments(course.id, password).then(a => {
       setAssignments(a);
@@ -59,7 +66,7 @@ export default function BatchGradeTab({ course, password }) {
     const resp = await fetch(`${BASE}/api/batchgrade/grade-one`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ batchId: record.id })
+      body: JSON.stringify({ batchId: record.id, tone, sentences, commentMode, feedbackStyle })
     });
     const data = await resp.json();
     setRecords(rs => rs.map(r => r.id === record.id
@@ -122,6 +129,60 @@ export default function BatchGradeTab({ course, password }) {
             style={{ width: '100%', fontSize: 12, padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', marginBottom: 8 }}>
             {assignments.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
+
+          {/* Preset settings toggle */}
+          <button onClick={() => setShowPresets(p => !p)}
+            style={{ width: '100%', fontSize: 11, padding: '4px 8px', marginBottom: 6, background: showPresets ? accent + '15' : 'var(--bg2)',
+              border: `1px solid ${showPresets ? accent : 'var(--border)'}`, borderRadius: 6, cursor: 'pointer',
+              color: showPresets ? accent : 'var(--text2)', fontWeight: showPresets ? 600 : 400, textAlign: 'left' }}>
+            ⚙ Grading presets {showPresets ? '▲' : '▼'}
+          </button>
+
+          {showPresets && (
+            <div style={{ padding: '10px 10px', background: 'var(--bg2)', borderRadius: 8, marginBottom: 8, fontSize: 11 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                <div>
+                  <div style={{ color: 'var(--text3)', marginBottom: 3 }}>Tone</div>
+                  <select value={tone} onChange={e => setTone(e.target.value)}
+                    style={{ width: '100%', fontSize: 11, padding: '3px 5px', borderRadius: 4, border: '1px solid var(--border)' }}>
+                    <option value="plain-warm">Plain + warm</option>
+                    <option value="plain">Plain English</option>
+                    <option value="conversational">Conversational</option>
+                    <option value="encouraging">Encouraging</option>
+                    <option value="coach">Coach</option>
+                    <option value="formal">Formal</option>
+                  </select>
+                </div>
+                <div>
+                  <div style={{ color: 'var(--text3)', marginBottom: 3 }}>Style</div>
+                  <select value={feedbackStyle} onChange={e => setFeedbackStyle(e.target.value)}
+                    style={{ width: '100%', fontSize: 11, padding: '3px 5px', borderRadius: 4, border: '1px solid var(--border)' }}>
+                    <option value="balanced">Balanced</option>
+                    <option value="strength-first">Lead with strength</option>
+                    <option value="gap-first">Lead with gap</option>
+                    <option value="growth">Growth focused</option>
+                    <option value="direct">Direct only</option>
+                  </select>
+                </div>
+                <div>
+                  <div style={{ color: 'var(--text3)', marginBottom: 3 }}>Sentences</div>
+                  <select value={sentences} onChange={e => setSentences(parseInt(e.target.value))}
+                    style={{ width: '100%', fontSize: 11, padding: '3px 5px', borderRadius: 4, border: '1px solid var(--border)' }}>
+                    {[2,3,4,5,6,7,8].map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <div style={{ color: 'var(--text3)', marginBottom: 3 }}>Criterion comments</div>
+                  <select value={commentMode} onChange={e => setCommentMode(e.target.value)}
+                    style={{ width: '100%', fontSize: 11, padding: '3px 5px', borderRadius: 4, border: '1px solid var(--border)' }}>
+                    <option value="imperfect">Only if not perfect</option>
+                    <option value="all">All criteria</option>
+                    <option value="none">None</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Stats */}
           <div style={{ display: 'flex', gap: 6, marginBottom: 8, fontSize: 11 }}>

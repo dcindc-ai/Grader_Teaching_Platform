@@ -117,7 +117,7 @@ router.post('/start', async (req, res) => {
 
 // POST /api/batchgrade/grade-one — grade a single pending record
 router.post('/grade-one', async (req, res) => {
-  const { batchId } = req.body;
+  const { batchId, tone, sentences, commentMode, feedbackStyle } = req.body;
   const record = db.prepare('SELECT * FROM batch_grades WHERE id=?').get(batchId);
   if (!record) return res.status(404).json({ error: 'Record not found' });
 
@@ -139,6 +139,28 @@ router.post('/grade-one', async (req, res) => {
     const ratings = c.ratings?.map(r => `  - ${r.name} (${r.points}pts): ${r.description || r.name}`).join('\n') || '';
     return `${i+1}. ${c.name} (max ${c.maxPoints}pts)\n${ratings}`;
   }).join('\n\n');
+
+  const sentenceCount = parseInt(sentences) || 3;
+  const toneMap = {
+    'plain-warm': 'Write in plain, conversational English. Be warm but not stiff.',
+    'plain': 'Write in plain, direct English. Short sentences. No filler.',
+    'conversational': 'Write like you are talking to the student directly.',
+    'encouraging': 'Be genuinely encouraging. Lead with what they did well.',
+    'coach': 'Sound like a coach. Be direct and forward-looking.',
+    'formal': 'Use professional academic language.',
+  };
+  const styleMap = {
+    'balanced': 'Acknowledge a specific strength, then address the most important gap.',
+    'strength-first': 'Open with what they genuinely did well, then transition to gaps.',
+    'gap-first': 'Lead with the most important thing to fix, then acknowledge strengths.',
+    'growth': 'Frame everything in terms of growth and next level.',
+    'direct': 'Skip praise. Tell them exactly what the work shows and what needs to change.',
+  };
+  const toneInstructions = toneMap[tone] || toneMap['plain-warm'];
+  const styleInstructions = styleMap[feedbackStyle] || styleMap['balanced'];
+  const commentInstruction = commentMode === 'none' ? 'Leave studentComment empty for all criteria.' :
+    commentMode === 'all' ? 'Write a studentComment for every criterion.' :
+    'Write a studentComment only for criteria that are not perfect.';
 
   const system = `You are grading a student discussion post for ${course.name}.
 Grade ONLY against the ${rubricCriteria.length} criteria below.
@@ -164,12 +186,12 @@ Return ONLY valid JSON:
       "suggestedRating": "Accomplished|Proficient|Needs Improvement|Unacceptable",
       "suggestedPoints": 14,
       "scoringRationale": "instructor-only rationale referencing actual student work",
-      "studentComment": "1-2 sentence comment to share with student"
+      "studentComment": "${commentInstruction}"
     }
   ],
   "totalPoints": 68,
   "totalMax": 75,
-  "instructorParagraph": "3-4 sentence personalized paragraph starting with first name",
+  "instructorParagraph": "${toneInstructions} ${styleInstructions} Start with first name. ${sentenceCount} sentences. Max 20 words per sentence.",
   "overallSummary": "1-2 sentence summary"
 }`;
 
