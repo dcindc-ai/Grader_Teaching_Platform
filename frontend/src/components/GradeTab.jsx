@@ -110,7 +110,8 @@ export default function GradeTab({ course, password, activeAssignmentId, queue, 
           {queue.length > 0 && (
             <div style={{ marginBottom: 10, marginTop: 8 }}>
               {queue.map((q, i) => (
-                <div key={i} style={{
+                <div key={i}>
+                <div style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                   padding: '5px 10px', background: '#fff', border: '1px solid var(--border)',
                   borderRadius: 6, marginBottom: 3, fontSize: 12
@@ -132,6 +133,7 @@ export default function GradeTab({ course, password, activeAssignmentId, queue, 
                     {q.errorMsg}
                   </div>
                 )}
+                </div>
               ))}
             </div>
           )}
