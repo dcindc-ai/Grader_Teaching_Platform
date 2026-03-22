@@ -162,7 +162,7 @@ GRADING STANDARDS:
 - If the student's own reasoning undercuts their argument, point that out
 - Be honest about weak work — a 10-12 should feel clearly different from 13-15
 ${exampleContext ? "Use the calibration examples to anchor your scoring." : ""}
-${gradingGuidance ? `\nINSTRUCTOR EXCEPTIONS — DO NOT PENALIZE FOR THESE:\n${gradingGuidance}` : ""}`;
+${gradingGuidance ? `\nINSTRUCTOR EXCEPTIONS — HARD RULES, OVERRIDE THE RUBRIC:\n${gradingGuidance}` : ""}`;
   const toneMap = {
     'plain-warm':    'Write in plain, conversational English. Be warm and encouraging but not stiff. Sound like a real person, not a form letter. Avoid academic or corporate language.',
     'plain':         'Write in plain, direct English. Short sentences. No filler words. Get to the point. Sound like a colleague giving honest feedback.',
