@@ -117,7 +117,8 @@ export default function GradeTab({ course, password, activeAssignmentId, queue, 
                 }}>
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }}>{q.name}</span>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                    <span className={`badge status-${q.status}`} style={{ fontSize: 11 }}>
+                    <span className={`badge status-${q.status}`} style={{ fontSize: 11 }}
+                      title={q.errorMsg || ''}>
                       {q.status === 'grading' ? 'grading…' : q.status}
                     </span>
                     {q.status === 'pending' && (
@@ -126,6 +127,11 @@ export default function GradeTab({ course, password, activeAssignmentId, queue, 
                     )}
                   </div>
                 </div>
+                {q.status === 'error' && q.errorMsg && (
+                  <div style={{ fontSize: 11, color: 'var(--red)', padding: '2px 10px 6px', marginTop: -3 }}>
+                    {q.errorMsg}
+                  </div>
+                )}
               ))}
             </div>
           )}
