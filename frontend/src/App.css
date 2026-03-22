@@ -31,7 +31,7 @@
   font-weight: 700; font-size: 11px; color: #fff;
 }
 .topbar-name { font-size: 13px; font-weight: 600; color: var(--text); }
-.topbar-nav { display: flex; align-items: center; gap: 2px; flex: 1; overflow-x: auto; }
+.topbar-nav { display: flex; align-items: center; gap: 2px; flex: 1; overflow-x: auto; scrollbar-width: thin; }
 .topbar-right { flex-shrink: 0; }
 
 .course-tab {

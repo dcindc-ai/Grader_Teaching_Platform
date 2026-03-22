@@ -19,16 +19,16 @@ const BASE = import.meta.env.PROD ? '' : 'http://localhost:3001';
 const TABS = [
   { key: 'assignments', label: 'Assignments' },
   { key: 'grade', label: 'Grade' },
-  { key: 'alwayson', label: 'Always-On' },
+  { key: 'batch', label: '⚡ Batch Grade' },
   { key: 'discuss', label: 'Discuss' },
+  { key: 'alwayson', label: 'Always-On' },
   { key: 'students', label: 'Students' },
   { key: 'materials', label: 'Materials' },
   { key: 'analytics', label: '📊 Analytics' },
   { key: 'label', label: 'Label Data' },
-  { key: 'sync', label: '⇄ Sync Check' },
+  { key: 'sync', label: '⇄ Sync' },
   { key: 'insights', label: '💡 Insights' },
   { key: 'flags', label: '⚑ Flags' },
-  { key: 'batch', label: '⚡ Batch Grade' },
   { key: 'settings', label: 'Settings' },
 ];
 
