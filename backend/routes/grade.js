@@ -299,7 +299,23 @@ async function gradeOne(filePath, assignment, course, skipAlwaysOn=false) {
   if (assignment.grading_override) {
     console.log(`[Per-student override active]: ${assignment.grading_override.slice(0,100)}`);
   }
-  const base64 = fs.readFileSync(filePath).toString('base64');
+  const fileBuffer = fs.readFileSync(filePath);
+  const base64 = fileBuffer.toString('base64');
+  const originalName = (file.originalname || '').toLowerCase();
+  const isDocx = originalName.endsWith('.docx') || originalName.endsWith('.doc');
+
+  // Extract text from Word docs using mammoth
+  let docxText = '';
+  if (isDocx) {
+    try {
+      const mammoth = require('mammoth');
+      const result = await mammoth.extractRawText({ buffer: fileBuffer });
+      docxText = result.value || '';
+      console.log(`[grade] Word doc extracted: ${docxText.length} chars`);
+    } catch(e) {
+      console.warn('[grade] Word doc extraction failed:', e.message);
+    }
+  }
 
   const examples = db.prepare('SELECT * FROM examples WHERE assignment_id=? ORDER BY created_at DESC LIMIT 3').all(assignment.id);
   // Pull lecture materials first, then other materials
@@ -314,17 +330,19 @@ async function gradeOne(filePath, assignment, course, skipAlwaysOn=false) {
     LIMIT 5
   `).all(course.id, assignment.id);
 
+  // Build message content based on file type
+  const gradeMessageContent = isDocx && docxText
+    ? [{ type: 'text', text: 'STUDENT SUBMISSION (Word document):\n\n' + docxText + '\n\nGrade this student submission. Return only the JSON.' }]
+    : [
+        { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } },
+        { type: 'text', text: 'Grade this student submission. Return only the JSON.' }
+      ];
+
   const resp = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
     max_tokens: 2000,
     system: buildGradePrompt(assignment, course, examples, materials),
-    messages: [{
-      role: 'user',
-      content: [
-        { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } },
-        { type: 'text', text: 'Grade this student submission. Return only the JSON.' }
-      ]
-    }]
+    messages: [{ role: 'user', content: gradeMessageContent }]
   });
 
   const text = resp.content.find(b => b.type === 'text')?.text || '{}';
