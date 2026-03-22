@@ -291,7 +291,7 @@ Return ONLY valid JSON, no fences:
 
 // ─── Grade a single submission ────────────────────────────────────────────
 
-async function gradeOne(filePath, assignment, course, skipAlwaysOn=false) {
+async function gradeOne(filePath, assignment, course, skipAlwaysOn=false, originalName='') {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   if (assignment.grading_guidance) {
     console.log(`[Grading guidance active for ${assignment.name}]: ${assignment.grading_guidance.slice(0,100)}`);
@@ -301,8 +301,8 @@ async function gradeOne(filePath, assignment, course, skipAlwaysOn=false) {
   }
   const fileBuffer = fs.readFileSync(filePath);
   const base64 = fileBuffer.toString('base64');
-  const originalName = (filePath || '').toLowerCase();
-  const isDocx = originalName.endsWith('.docx') || originalName.endsWith('.doc');
+  const nameToCheck = (originalName || filePath || '').toLowerCase();
+  const isDocx = nameToCheck.endsWith('.docx') || nameToCheck.endsWith('.doc');
 
   // Extract text from Word docs using mammoth
   let docxText = '';
@@ -312,8 +312,10 @@ async function gradeOne(filePath, assignment, course, skipAlwaysOn=false) {
       const result = await mammoth.extractRawText({ buffer: fileBuffer });
       docxText = result.value || '';
       console.log(`[grade] Word doc extracted: ${docxText.length} chars`);
+      if (!docxText.trim()) throw new Error('Empty text extracted from Word doc');
     } catch(e) {
-      console.warn('[grade] Word doc extraction failed:', e.message);
+      console.error('[grade] Word doc extraction failed:', e.message);
+      throw new Error('Could not read Word document. Try saving as PDF and uploading that instead. (' + e.message + ')');
     }
   }
 
@@ -394,7 +396,7 @@ router.post('/batch', upload.any(), async (req, res) => {
       let gradeResult, alwaysOn;
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
-          ({ gradeResult, alwaysOn } = await gradeOne(file.path, assignment, course, false));
+          ({ gradeResult, alwaysOn } = await gradeOne(file.path, assignment, course, false, originalName));
           break;
         } catch (e) {
           if (e.message.includes('429') && attempt < 2) {
