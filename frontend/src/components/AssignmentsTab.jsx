@@ -16,9 +16,42 @@ export default function AssignmentsTab({ course, password }) {
   const [showAddEx, setShowAddEx] = useState(false);
   const [exForm, setExForm] = useState({ studentName: '', score: '4', quality: 'good', notes: '', content: '' });
   const [parsing, setParsing] = useState(false);
+  const [importingCanvas, setImportingCanvas] = useState(false);
   const pdfRef = useRef();
   const csvRef = useRef();
   const [importingCsv, setImportingCsv] = useState(false);
+
+  async function handleImportFromCanvas() {
+    if (!selected) return;
+    setImportingCanvas(true);
+    try {
+      const r = await fetch(`${BASE}/api/canvasimport/assignment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ courseId: course.id, assignmentId: selected.id })
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Import failed');
+
+      // Update form with fetched data — enter edit mode automatically
+      setForm(f => ({
+        ...f,
+        description: data.description || f.description,
+        rubric: data.rubricText || f.rubric,
+        rubricCriteria: data.rubricCriteria || f.rubricCriteria,
+        maxScore: data.maxScore || f.maxScore,
+      }));
+      setEditMode(true);
+
+      const msg = data.rubricCriteria
+        ? `✓ Imported from Canvas: ${data.rubricCriteria.length} rubric criteria + description. Review and Save.`
+        : `✓ Imported description from Canvas (no rubric found). Review and Save.`;
+      alert(msg);
+    } catch(e) {
+      alert('Canvas import error: ' + e.message);
+    }
+    setImportingCanvas(false);
+  }
 
   async function importRubricCSV(text) {
     setImportingCsv(true);
@@ -198,7 +231,7 @@ export default function AssignmentsTab({ course, password }) {
               <div style={{ fontSize: 18, fontWeight: 700 }}>{selected.name}</div>
               <div style={{ fontSize: 12, color: 'var(--text2)' }}>{selected.type} · {selected.maxScore} pts max</div>
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {/* PDF upload button */}
               <input ref={pdfRef} type="file" accept=".pdf" style={{ display: 'none' }}
                 onChange={e => e.target.files[0] && handleParsePDF(e.target.files[0])} />
@@ -206,6 +239,13 @@ export default function AssignmentsTab({ course, password }) {
                 style={{ fontSize: 12 }} title="Upload assignment PDF to auto-fill fields">
                 {parsing ? 'Reading PDF…' : '📄 Import from PDF'}
               </button>
+              {course.canvasToken && selected?.canvasAssignmentId && (
+                <button onClick={handleImportFromCanvas} disabled={importingCanvas}
+                  style={{ fontSize: 12, background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}
+                  title="Pull rubric and description directly from Canvas">
+                  {importingCanvas ? 'Importing…' : '⬇ Import from Canvas'}
+                </button>
+              )}
               {editMode
                 ? <><button className="primary" onClick={saveAssignment} disabled={saving}>{saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save'}</button>
                     <button onClick={() => { setEditMode(false); setForm(selected); }}>Cancel</button></>
