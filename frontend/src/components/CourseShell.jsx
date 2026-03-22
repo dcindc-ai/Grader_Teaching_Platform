@@ -11,6 +11,7 @@ import CourseSettingsTab from './CourseSettingsTab.jsx';
 import SyncTab from './SyncTab.jsx';
 import InsightsTab from './InsightsTab.jsx';
 import FlagsTab from './FlagsTab.jsx';
+import BatchGradeTab from './BatchGradeTab.jsx';
 import { getAssignments } from '../api.js';
 
 const BASE = import.meta.env.PROD ? '' : 'http://localhost:3001';
@@ -27,6 +28,7 @@ const TABS = [
   { key: 'sync', label: '⇄ Sync Check' },
   { key: 'insights', label: '💡 Insights' },
   { key: 'flags', label: '⚑ Flags' },
+  { key: 'batch', label: '⚡ Batch Grade' },
   { key: 'settings', label: 'Settings' },
 ];
 
@@ -172,6 +174,9 @@ export default function CourseShell({
         )}
         {tab === 'flags' && (
           <FlagsTab course={course} password={password} />
+        )}
+        {tab === 'batch' && (
+          <BatchGradeTab course={course} password={password} />
         )}
         {tab === 'settings' && (
           <CourseSettingsTab course={course} password={password}
