@@ -301,7 +301,7 @@ async function gradeOne(filePath, assignment, course, skipAlwaysOn=false) {
   }
   const fileBuffer = fs.readFileSync(filePath);
   const base64 = fileBuffer.toString('base64');
-  const originalName = (file.originalname || '').toLowerCase();
+  const originalName = (filePath || '').toLowerCase();
   const isDocx = originalName.endsWith('.docx') || originalName.endsWith('.doc');
 
   // Extract text from Word docs using mammoth
@@ -362,9 +362,9 @@ async function gradeOne(filePath, assignment, course, skipAlwaysOn=false) {
 
 // ─── Routes ───────────────────────────────────────────────────────────────
 
-router.post('/batch', upload.array('files', 50), async (req, res) => {
+router.post('/batch', upload.any(), async (req, res) => {
   const { assignmentId, courseId } = req.body;
-  const files = req.files;
+  const files = req.files?.filter(f => f.fieldname === 'files' || f.fieldname.startsWith('file'));
   if (!files?.length) return res.status(400).json({ error: 'No files' });
 
   const assignment = db.prepare('SELECT * FROM assignments WHERE id=?').get(assignmentId);
