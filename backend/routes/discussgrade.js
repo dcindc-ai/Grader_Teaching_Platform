@@ -243,7 +243,7 @@ Return ONLY valid JSON, no markdown fences:
 
     if (hasFiles || hasScreenshot) {
       const parts = [];
-      parts.push({ type: 'text', text: 'IMPORTANT: The attached files are part of the student submission. Examine everything carefully before grading. Images may contain before/after prompts, tables, diagrams, or formatted code. PDFs are the full submitted document. If you see required deliverables in any attached file — that counts as meeting that requirement. Do not penalize for missing items that are present in the attached files.' });
+      parts.push({ type: 'text', text: 'IMPORTANT: The attached files are part of the student submission. Examine ALL attached files BEFORE scoring any criterion. A table, image, or diagram showing original vs refined prompts counts as satisfying the before/after prompt requirement — even if the assignment says "code blocks". A screenshot of a prompt comparison table IS a valid before/after prompt submission. If a deliverable exists in any attached file in any format, do NOT penalize for it being missing. Only mark a deliverable missing if it is absent from both the text submission AND all attached files.' });
 
       // Add each attached file
       for (const file of allFiles) {
