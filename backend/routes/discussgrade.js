@@ -343,6 +343,32 @@ Return ONLY valid JSON, no markdown fences:
       }
     }
 
+    // Auto-check for DO NOT PENALIZE violations
+    if (gradingGuidance && result.criteriaGrades?.length && result.gradeId) {
+      try {
+        const { v4: uuidv4flag } = require('uuid');
+        const dnpTerms = gradingGuidance.split(/[.,\n]/).map(s => s.trim()).filter(s => s.length > 8);
+        for (const cg of result.criteriaGrades) {
+          const comment = ((cg.studentComment || '') + ' ' + (cg.scoringRationale || '')).toLowerCase();
+          for (const term of dnpTerms) {
+            const termLower = term.toLowerCase().replace(/^(do not penalize|don't penalize|no penalty|ignore)[\s:]+/i, '').trim();
+            if (termLower.length < 6) continue;
+            if (comment.includes(termLower.slice(0, 20)) && (cg.suggestedPoints || 0) < (cg.maxPoints || 15)) {
+              const exists = db.prepare(`SELECT id FROM grading_flags WHERE assignment_id=? AND student_name=? AND criterion_name=? AND flag_type='dnp-violation' AND status='open'`)
+                .get(assignmentId, studentName, cg.criterionName);
+              if (!exists) {
+                db.prepare(`INSERT INTO grading_flags (id,course_id,assignment_id,student_name,grade_id,flag_type,criterion_name,message) VALUES (?,?,?,?,?,?,?,?)`)
+                  .run(uuidv4flag(), courseId, assignmentId, studentName, result.gradeId, 'dnp-violation', cg.criterionName,
+                    `"${cg.criterionName}" may have penalized "${termLower.slice(0,50)}" — this is in your DO NOT PENALIZE list.`);
+                if (!result.flags) result.flags = [];
+                result.flags.push({ type: 'dnp-violation', criterionName: cg.criterionName });
+              }
+            }
+          }
+        }
+      } catch(e) { console.warn('Flag check error:', e.message); }
+    }
+
     res.json(result);
   } catch (e) {
     res.status(500).json({ error: e.message });

@@ -31,6 +31,7 @@ export default function DiscussGrader({ course, password, assignments, question,
   // Grading state
   const [grading, setGrading] = useState(false);
   const [result, setResult] = useState(null);
+  const [flagAlert, setFlagAlert] = useState('');
   const [scores, setScores] = useState({});
   const [ratings, setRatings] = useState({});
   const [rationale, setRationale] = useState({});
@@ -167,6 +168,14 @@ export default function DiscussGrader({ course, password, assignments, question,
           initRationale[cg.criterionName] = { scoring: cg.scoringRationale || '', student: cg.studentComment || '' };
         });
         setScores(initScores); setRatings(initRatings); setRationale(initRationale);
+
+        // Show inline flag alert if DNP violations detected
+        if (gradeResult.flags?.length > 0) {
+          const flagNames = gradeResult.flags.map(f => f.criterionName).join(', ');
+          setFlagAlert(`⚠ Possible DO NOT PENALIZE violation in: ${flagNames}. Check the Flags tab.`);
+        } else {
+          setFlagAlert('');
+        }
       }
 
       // 2. Generate instructor response
@@ -546,6 +555,15 @@ export default function DiscussGrader({ course, password, assignments, question,
 
         {/* Right: output */}
         <div>
+          {flagAlert && (
+            <div style={{ padding: '10px 14px', marginBottom: 10, background: 'rgba(220,38,38,0.08)',
+              border: '1px solid #dc2626', borderRadius: 8, fontSize: 12, color: '#dc2626',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>{flagAlert}</span>
+              <button onClick={() => setFlagAlert('')} style={{ background: 'none', border: 'none',
+                cursor: 'pointer', color: '#dc2626', fontWeight: 700, padding: '0 4px' }}>✕</button>
+            </div>
+          )}
           {!hasResult && !grading && (
             <div style={{ padding: '60px 0', textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>
               <div style={{ fontSize: 32, marginBottom: 10 }}>✏️</div>
@@ -593,9 +611,32 @@ export default function DiscussGrader({ course, password, assignments, question,
                           {copied === `c-${c.id}` ? '✓' : 'Copy'}
                         </button>
                         <input type="number" value={pts} min="0" max={c.maxPoints} step="0.5"
-                          onChange={e => {
+                          onChange={async e => {
                             const val = parseFloat(e.target.value) || 0;
+                            const oldVal = scores[c.name] ?? pts;
                             setScores(s => ({ ...s, [c.name]: val }));
+                            // Check correction propagation if score changed meaningfully
+                            if (Math.abs(val - oldVal) >= 0.5 && result?.gradeId && selectedAssignment) {
+                              try {
+                                const r = await fetch(`${BASE}/api/flags/check-correction`, {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({
+                                    courseId: course.id,
+                                    assignmentId: selectedAssignment.id,
+                                    studentName,
+                                    criterionName: c.name,
+                                    oldScore: oldVal,
+                                    newScore: val,
+                                    gradeId: result.gradeId
+                                  })
+                                });
+                                const data = await r.json();
+                                if (data.flagged?.length > 0) {
+                                  setFlagAlert(`↻ You changed "${c.name}" for ${studentName}. ${data.flagged.length} other student(s) have the same score and may need the same correction. Check the Flags tab.`);
+                                }
+                              } catch(e) {}
+                            }
                             // Find matching rating tier for this score
                             const match = c.ratings
                               .slice()

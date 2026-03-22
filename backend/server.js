@@ -46,6 +46,7 @@ app.use('/api/canvas', require('./routes/canvas'));
 app.use('/api/canvassync', require('./routes/canvassync'));
 app.use('/api/insights', require('./routes/insights'));
 app.use('/api/canvasimport', require('./routes/canvasimport'));
+app.use('/api/flags', require('./routes/flags'));
 
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, 'public')));

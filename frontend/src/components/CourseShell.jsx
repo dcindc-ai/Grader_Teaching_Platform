@@ -10,6 +10,7 @@ import AnalyticsTab from './AnalyticsTab.jsx';
 import CourseSettingsTab from './CourseSettingsTab.jsx';
 import SyncTab from './SyncTab.jsx';
 import InsightsTab from './InsightsTab.jsx';
+import FlagsTab from './FlagsTab.jsx';
 import { getAssignments } from '../api.js';
 
 const BASE = import.meta.env.PROD ? '' : 'http://localhost:3001';
@@ -25,6 +26,7 @@ const TABS = [
   { key: 'label', label: 'Label Data' },
   { key: 'sync', label: '⇄ Sync Check' },
   { key: 'insights', label: '💡 Insights' },
+  { key: 'flags', label: '⚑ Flags' },
   { key: 'settings', label: 'Settings' },
 ];
 
@@ -48,11 +50,15 @@ export default function CourseShell({
     });
   }, [course.id]);
 
-  // Refresh AO count whenever we switch tabs
+  const [flagCount, setFlagCount] = useState(0);
+
+  // Refresh AO count and flags count whenever we switch tabs
   useEffect(() => {
     fetch(`${BASE}/api/alwayson/counts?courseId=${course.id}`, {
       headers: { 'x-admin-password': password }
     }).then(r => r.json()).then(d => onAoCount(d.pending || 0)).catch(() => {});
+    fetch(`${BASE}/api/flags?courseId=${course.id}&status=open`)
+      .then(r => r.json()).then(d => setFlagCount(Array.isArray(d) ? d.length : 0)).catch(() => {});
   }, [course.id, tab]);
 
   function setActiveAssignment(id) {
@@ -95,6 +101,9 @@ export default function CourseShell({
               {t.label}
               {t.key === 'alwayson' && aoCount > 0 && (
                 <span className="badge" style={{ background: 'rgba(217,119,6,0.1)', color: 'var(--amber)', borderColor: 'rgba(217,119,6,0.2)' }}>{aoCount}</span>
+              )}
+              {t.key === 'flags' && flagCount > 0 && (
+                <span className="badge" style={{ background: 'rgba(220,38,38,0.1)', color: '#dc2626', borderColor: 'rgba(220,38,38,0.2)' }}>{flagCount}</span>
               )}
               {t.key === 'grade' && gradingInProgress && (
                 <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--amber)', flexShrink: 0 }} title="Grading in progress" />
@@ -160,6 +169,9 @@ export default function CourseShell({
         )}
         {tab === 'insights' && (
           <InsightsTab course={course} password={password} />
+        )}
+        {tab === 'flags' && (
+          <FlagsTab course={course} password={password} />
         )}
         {tab === 'settings' && (
           <CourseSettingsTab course={course} password={password}
