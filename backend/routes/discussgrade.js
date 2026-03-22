@@ -59,7 +59,7 @@ router.post('/parse-rubric', (req, res) => {
 // ─── Grade a discussion submission against a rubric ───────────────────────
 
 router.post('/grade', async (req, res) => {
-  const { courseId, assignmentId, studentName, discussionQuestion, submission, rubricCriteria: clientRubric, instructorBio, tone, sentences, submissionType, feedbackStyle, syncOnly, manualGrade } = req.body;
+  const { courseId, assignmentId, studentName, discussionQuestion, submission, rubricCriteria: clientRubric, instructorBio, tone, sentences, submissionType, feedbackStyle, syncOnly, manualGrade, screenshotData } = req.body;
 
   // Sync-only mode — save manual Canvas grades back to platform without re-grading
   if (syncOnly && manualGrade && assignmentId && courseId) {
@@ -232,11 +232,28 @@ Return ONLY valid JSON, no markdown fences:
 }`;
 
   try {
+    // Build message content — add screenshot if provided
+    let messageContent;
+    if (screenshotData && screenshotData.startsWith('data:image/')) {
+      const base64Data = screenshotData.split(',')[1];
+      const mediaType = screenshotData.split(';')[0].split(':')[1];
+      messageContent = [
+        {
+          type: 'image',
+          source: { type: 'base64', media_type: mediaType, data: base64Data }
+        },
+        { type: 'text', text: prompt }
+      ];
+      console.log('[discussgrade] Including screenshot in grading call');
+    } else {
+      messageContent = prompt;
+    }
+
     const resp = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 4000,
       system,
-      messages: [{ role: 'user', content: prompt }]
+      messages: [{ role: 'user', content: messageContent }]
     });
 
     const text = resp.content.find(b => b.type === 'text')?.text || '{}';
