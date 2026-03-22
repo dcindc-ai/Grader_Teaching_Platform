@@ -234,6 +234,7 @@ Return ONLY valid JSON, no markdown fences:
   try {
     // Build message content — add screenshot if provided
     let messageContent;
+    console.log('[discussgrade] screenshotData received:', screenshotData ? screenshotData.length + ' chars' : 'NONE');
     if (screenshotData && screenshotData.startsWith('data:image/')) {
       const base64Data = screenshotData.split(',')[1];
       const mediaType = screenshotData.split(';')[0].split(':')[1];
