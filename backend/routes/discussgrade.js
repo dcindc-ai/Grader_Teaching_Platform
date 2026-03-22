@@ -257,6 +257,20 @@ Return ONLY valid JSON, no markdown fences:
         } else if (mediaType && mediaType.startsWith('image/')) {
           parts.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } });
           console.log('[discussgrade] Including image:', file.name);
+        } else if (file.name && (file.name.endsWith('.docx') || file.name.endsWith('.doc'))) {
+          // Extract text from Word doc
+          try {
+            const mammoth = require('mammoth');
+            const buf = Buffer.from(base64, 'base64');
+            const result = await mammoth.extractRawText({ buffer: buf });
+            if (result.value) {
+              parts.push({ type: 'text', text: 'ATTACHED WORD DOCUMENT (' + file.name + '):\n' + result.value });
+              console.log('[discussgrade] Including Word doc:', file.name);
+            }
+          } catch(e) {
+            console.warn('[discussgrade] Word doc extraction failed:', e.message);
+            parts.push({ type: 'text', text: 'ATTACHED FILE: ' + file.name + ' (could not extract text)' });
+          }
         }
       }
 
