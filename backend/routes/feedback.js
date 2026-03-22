@@ -121,33 +121,50 @@ router.get('/docx/:gradeId', async (req, res) => {
       spacing: { after: 200 }
     }));
 
-    // Score box
+    // Score box — dynamic rubric criteria
     const s = grade.scores || {};
+
+    // Load rubric criteria from assignment if available
+    let rubricCriteria = [];
+    try {
+      if (assignment.rubric_criteria) rubricCriteria = JSON.parse(assignment.rubric_criteria);
+    } catch(e) {}
+
+    // Build criteria from rubric or fall back to scores keys
+    const criteriaEntries = rubricCriteria.length > 0
+      ? rubricCriteria.map(c => ({ label: c.name, max: c.maxPoints, val: s[c.name] || 0 }))
+      : Object.entries(s).map(([k, v]) => ({ label: k, max: assignment.max_score / Math.max(Object.keys(s).length, 1), val: v }));
+
+    const colCount = Math.min(criteriaEntries.length, 4);
+    const colWidth = Math.floor(9360 / colCount);
+
+    // Split into rows of 4
+    const criteriaRows = [];
+    for (let i = 0; i < criteriaEntries.length; i += 4) {
+      criteriaRows.push(criteriaEntries.slice(i, i + 4));
+    }
+
     children.push(new Table({
       width: { size: 9360, type: WidthType.DXA },
-      columnWidths: [2340, 2340, 2340, 2340],
+      columnWidths: Array(colCount).fill(colWidth),
       rows: [
-        new TableRow({
-          children: [
-            ...['Annotated Product', 'Narrative', 'Context', 'Overall Quality'].map((label, i) => {
-              const keys = ['annotated_product', 'narrative', 'context', 'overall_quality'];
-              const maxes = [2, 2, 1, 1];
-              const val = s[keys[i]] || 0;
-              const max = maxes[i];
-              const color = val/max >= 0.85 ? GREEN : val/max >= 0.6 ? 'D97706' : RED;
-              return new TableCell({
-                borders,
-                width: { size: 2340, type: WidthType.DXA },
-                shading: { fill: 'F9FAFB', type: ShadingType.CLEAR },
-                margins: { top: 120, bottom: 120, left: 120, right: 120 },
-                children: [
-                  new Paragraph({ children: [new TextRun({ text: label, size: 16, color: '9CA3AF', font: 'Arial' })], spacing: { after: 40 } }),
-                  new Paragraph({ children: [new TextRun({ text: `${val}/${max}`, bold: true, size: 28, color, font: 'Arial' })] })
-                ]
-              });
-            })
-          ]
-        }),
+        ...criteriaRows.map(rowCriteria => new TableRow({
+          children: rowCriteria.map(({ label, max, val }) => {
+            const pct = max > 0 ? val / max : 0;
+            const color = pct >= 0.85 ? GREEN : pct >= 0.6 ? 'D97706' : RED;
+            const shortLabel = label.length > 30 ? label.slice(0, 28) + '…' : label;
+            return new TableCell({
+              borders,
+              width: { size: colWidth, type: WidthType.DXA },
+              shading: { fill: 'F9FAFB', type: ShadingType.CLEAR },
+              margins: { top: 100, bottom: 100, left: 100, right: 100 },
+              children: [
+                new Paragraph({ children: [new TextRun({ text: shortLabel, size: 14, color: '9CA3AF', font: 'Arial' })], spacing: { after: 30 } }),
+                new Paragraph({ children: [new TextRun({ text: `${val}/${max}`, bold: true, size: 24, color, font: 'Arial' })] })
+              ]
+            });
+          })
+        })),
         new TableRow({
           children: [
             new TableCell({

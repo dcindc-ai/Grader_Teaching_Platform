@@ -649,8 +649,12 @@ router.get('/download', async (req, res) => {
       const sc=tc/mx>=0.83?GREEN:tc/mx>=0.6?rgb(0.6,0.4,0):RED;
       page.drawText(`TOTAL: ${grade.total} / ${grade.maxScore}`,{x:M,y,size:16,font:bold,color:sc});y-=20;
       const s=grade.scores||{};
-      [`Annotated Product: ${s.annotated_product}/2`,`Narrative: ${s.narrative}/2`,`Context: ${s.context}/1`,`Overall Quality: ${s.overall_quality}/1`]
-        .forEach(p=>{page.drawText(p,{x:M,y,size:10,font,color:BLACK});y-=LH;});y-=8;
+      // Dynamic criteria from rubric or scores
+      const rubricCrit = (() => { try { return assignment.rubric_criteria ? JSON.parse(assignment.rubric_criteria) : []; } catch(e) { return []; } })();
+      const scoreLines = rubricCrit.length > 0
+        ? rubricCrit.map(c => `${c.name}: ${s[c.name] || 0}/${c.maxPoints}`)
+        : Object.entries(s).map(([k,v]) => `${k.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())}: ${v}`);
+      scoreLines.forEach(p=>{chk(LH+2);page.drawText(p,{x:M,y,size:10,font,color:BLACK});y-=LH;});y-=8;
 
       if(grade.summary){sec('Overall Assessment');wrap(grade.summary,{f:italic,color:rgb(0.15,0.15,0.15)});y-=4;}
       if(grade.key_strength){y-=4;chk();page.drawText('+ '+grade.key_strength,{x:M,y,size:10,font,color:GREEN});y-=LH;}
