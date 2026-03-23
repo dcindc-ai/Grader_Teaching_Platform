@@ -258,14 +258,32 @@ Return ONLY valid JSON, no markdown fences:
           parts.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } });
           console.log('[discussgrade] Including image:', file.name);
         } else if (file.name && (file.name.endsWith('.docx') || file.name.endsWith('.doc'))) {
-          // Extract text from Word doc
+          // Extract text AND images from Word doc
           try {
             const mammoth = require('mammoth');
+            const JSZip = require('jszip');
             const buf = Buffer.from(base64, 'base64');
+
+            // Extract text
             const result = await mammoth.extractRawText({ buffer: buf });
             if (result.value) {
               parts.push({ type: 'text', text: 'ATTACHED WORD DOCUMENT (' + file.name + '):\n' + result.value });
-              console.log('[discussgrade] Including Word doc:', file.name);
+              console.log('[discussgrade] Including Word doc text:', file.name, result.value.length, 'chars');
+            }
+
+            // Extract embedded images
+            const zip = await JSZip.loadAsync(buf);
+            const imageFiles = Object.keys(zip.files).filter(n =>
+              n.startsWith('word/media/') && /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(n)
+            );
+            console.log('[discussgrade] Word doc images found:', imageFiles.length);
+            for (const imgPath of imageFiles.slice(0, 5)) {
+              const imgData = await zip.files[imgPath].async('base64');
+              const ext = imgPath.split('.').pop().toLowerCase();
+              const imgMediaType = (ext === 'jpg' || ext === 'jpeg') ? 'image/jpeg' :
+                                   ext === 'png' ? 'image/png' : 'image/jpeg';
+              parts.push({ type: 'image', source: { type: 'base64', media_type: imgMediaType, data: imgData } });
+              console.log('[discussgrade] Including embedded image from Word doc:', imgPath);
             }
           } catch(e) {
             console.warn('[discussgrade] Word doc extraction failed:', e.message);
