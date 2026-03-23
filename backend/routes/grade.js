@@ -303,6 +303,7 @@ async function gradeOne(filePath, assignment, course, skipAlwaysOn=false, origin
   const base64 = fileBuffer.toString('base64');
   const nameToCheck = (originalName || filePath || '').toLowerCase();
   const isDocx = nameToCheck.endsWith('.docx') || nameToCheck.endsWith('.doc');
+  const isPptx = nameToCheck.endsWith('.pptx') || nameToCheck.endsWith('.ppt');
 
   // Extract text AND images from Word docs using mammoth + JSZip
   let docxText = '';
@@ -358,7 +359,36 @@ async function gradeOne(filePath, assignment, course, skipAlwaysOn=false, origin
 
   // Build message content based on file type
   let gradeMessageContent;
-  if (isDocx) {
+  if (isPptx) {
+    // Extract text and images from PowerPoint
+    try {
+      const JSZip = require('jszip');
+      const zip = await JSZip.loadAsync(fileBuffer);
+      const slideFiles = Object.keys(zip.files)
+        .filter(n => /^ppt\/slides\/slide\d+\.xml$/.test(n))
+        .sort((a,b) => parseInt(a.match(/\d+/)?.[0]||0) - parseInt(b.match(/\d+/)?.[0]||0));
+      let pptText = '';
+      for (const sf of slideFiles) {
+        const xml = await zip.files[sf].async('string');
+        const texts = (xml.match(/<a:t[^>]*>([^<]+)<\/a:t>/g)||[]).map(t=>t.replace(/<[^>]+>/g,'')).join(' ').trim();
+        if (texts) pptText += `[Slide ${slideFiles.indexOf(sf)+1}]: ${texts}\n`;
+      }
+      const mediaFiles = Object.keys(zip.files).filter(n => n.startsWith('ppt/media/') && /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(n));
+      gradeMessageContent = [];
+      if (pptText) gradeMessageContent.push({ type: 'text', text: 'STUDENT POWERPOINT:\n' + pptText });
+      for (const imgPath of mediaFiles.slice(0,8)) {
+        const imgData = await zip.files[imgPath].async('base64');
+        const ext = imgPath.split('.').pop().toLowerCase();
+        const mt = (ext==='jpg'||ext==='jpeg') ? 'image/jpeg' : ext==='png' ? 'image/png' : 'image/jpeg';
+        gradeMessageContent.push({ type:'image', source:{type:'base64', media_type:mt, data:imgData} });
+      }
+      gradeMessageContent.push({ type:'text', text:'Grade this student submission. Return only the JSON.' });
+      console.log(`[grade] PPTX: ${slideFiles.length} slides, ${mediaFiles.length} images`);
+    } catch(e) {
+      console.error('[grade] PPTX extraction failed:', e.message);
+      gradeMessageContent = [{ type:'text', text:'Could not parse PowerPoint: ' + e.message }];
+    }
+  } else if (isDocx) {
     gradeMessageContent = [];
     if (docxImages.length > 0) {
       gradeMessageContent.push({ type: 'text', text: `STUDENT SUBMISSION (Word document with ${docxImages.length} embedded image(s)):\n\n${docxText}\n\nThe student's visual model/diagram is in the image(s) below. Examine them carefully before grading visual components.` });

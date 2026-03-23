@@ -257,6 +257,52 @@ Return ONLY valid JSON, no markdown fences:
         } else if (mediaType && mediaType.startsWith('image/')) {
           parts.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } });
           console.log('[discussgrade] Including image:', file.name);
+        } else if (file.name && (file.name.endsWith('.pptx') || file.name.endsWith('.ppt'))) {
+          // Extract text AND images from PowerPoint
+          try {
+            const JSZip = require('jszip');
+            const buf = Buffer.from(base64, 'base64');
+            const zip = await JSZip.loadAsync(buf);
+
+            // Extract text from all slides
+            const slideFiles = Object.keys(zip.files)
+              .filter(n => /^ppt\/slides\/slide\d+\.xml$/.test(n))
+              .sort((a, b) => {
+                const na = parseInt(a.match(/\d+/)?.[0] || 0);
+                const nb = parseInt(b.match(/\d+/)?.[0] || 0);
+                return na - nb;
+              });
+
+            let pptText = '';
+            for (const slideFile of slideFiles) {
+              const xml = await zip.files[slideFile].async('string');
+              const texts = xml.match(/<a:t[^>]*>([^<]+)<\/a:t>/g) || [];
+              const slideText = texts.map(t => t.replace(/<[^>]+>/g, '')).join(' ').trim();
+              if (slideText) pptText += `[Slide ${slideFiles.indexOf(slideFile)+1}]: ${slideText}
+`;
+            }
+            if (pptText) {
+              parts.push({ type: 'text', text: 'ATTACHED POWERPOINT (' + file.name + '):\n' + pptText });
+              console.log('[discussgrade] Including PPTX text:', file.name, pptText.length, 'chars');
+            }
+
+            // Extract slide images/media
+            const mediaFiles = Object.keys(zip.files).filter(n =>
+              n.startsWith('ppt/media/') && /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(n)
+            );
+            console.log('[discussgrade] PPTX images found:', mediaFiles.length);
+            for (const imgPath of mediaFiles.slice(0, 8)) {
+              const imgData = await zip.files[imgPath].async('base64');
+              const ext = imgPath.split('.').pop().toLowerCase();
+              const imgMediaType = (ext === 'jpg' || ext === 'jpeg') ? 'image/jpeg' :
+                                   ext === 'png' ? 'image/png' : 'image/jpeg';
+              parts.push({ type: 'image', source: { type: 'base64', media_type: imgMediaType, data: imgData } });
+              console.log('[discussgrade] Including PPTX image:', imgPath);
+            }
+          } catch(e) {
+            console.warn('[discussgrade] PPTX extraction failed:', e.message);
+            parts.push({ type: 'text', text: 'ATTACHED FILE: ' + file.name + ' (could not extract)' });
+          }
         } else if (file.name && (file.name.endsWith('.docx') || file.name.endsWith('.doc'))) {
           // Extract text AND images from Word doc
           try {

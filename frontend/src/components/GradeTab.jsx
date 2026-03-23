@@ -43,7 +43,7 @@ export default function GradeTab({ course, password, activeAssignmentId, queue, 
   const allGrades = [...sessionGrades, ...dbGrades.filter(g => !sessionIds.has(g.id))];
 
   function addFiles(files) {
-    const pdfs = Array.from(files).filter(f => f.name.endsWith('.pdf') || f.name.endsWith('.docx') || f.name.endsWith('.doc'));
+    const pdfs = Array.from(files).filter(f => f.name.endsWith('.pdf') || f.name.endsWith('.docx') || f.name.endsWith('.doc') || f.name.endsWith('.pptx') || f.name.endsWith('.ppt'));
     if (!pdfs.length) return;
     onQueue(q => {
       const existing = new Set(q.map(x => x.name));
@@ -101,10 +101,10 @@ export default function GradeTab({ course, password, activeAssignmentId, queue, 
             onDragOver={e => { e.preventDefault(); setDrag(true); }}
             onDragLeave={() => setDrag(false)}
             onDrop={e => { e.preventDefault(); setDrag(false); addFiles(e.dataTransfer.files); }}>
-            <p>Drop student PDFs or Word docs here or click to browse</p>
+            <p>Drop student PDFs, Word docs, or PowerPoints here or click to browse</p>
             <small>Multiple files · Max 25MB each</small>
           </div>
-          <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple style={{ display: 'none' }}
+          <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation" multiple style={{ display: 'none' }}
             onChange={e => addFiles(e.target.files)} />
 
           {queue.length > 0 && (
