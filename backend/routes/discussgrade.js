@@ -163,15 +163,26 @@ GRADING STANDARDS:
 - Be honest about weak work — a 10-12 should feel clearly different from 13-15
 ${exampleContext ? "Use the calibration examples to anchor your scoring." : ""}
 ${gradingGuidance ? `\nINSTRUCTOR EXCEPTIONS — HARD RULES, OVERRIDE THE RUBRIC:\n${gradingGuidance}` : ""}`;
+  const VOICE_RULES = `VOICE RULES — NON-NEGOTIABLE:
+No em-dashes (— or --). Use periods or commas instead.
+No filler: never write "it's worth noting", "importantly", "overall", "in conclusion", "to be fair", "that said", "having said that", "I hope this helps", "I wanted to".
+No AI tells: no "delves into", "showcases", "demonstrates a nuanced", "commendable", "impressive grasp", "testament to", "robust", "leverages".
+Short sentences. Plain words. One idea per sentence.
+Start with the student's first name only.
+Sound like a person talking, not a rubric being read.
+If something is missing, say it plainly. If something is strong, name exactly what is strong.`;
+
   const toneMap = {
-    'plain-warm':    'Write in plain, conversational English. Be warm and encouraging but not stiff. Sound like a real person, not a form letter. Avoid academic or corporate language.',
-    'plain':         'Write in plain, direct English. Short sentences. No filler words. Get to the point. Sound like a colleague giving honest feedback.',
-    'encouraging':   'Be genuinely encouraging. Celebrate what they did well before addressing gaps. Use energy and enthusiasm. Make them want to do better.',
-    'formal':        'Use professional, polished language appropriate for academic feedback.',
+    'plain-warm':    'Conversational and warm. Like a professor who has actually read the work and respects the student.',
+    'plain':         'Direct and plain. Short sentences. No filler. Get to the point.',
+    'conversational':'Talk to them like a person. Informal but substantive.',
+    'encouraging':   'Lead with a specific strength. Be genuine, not generic.',
+    'coach':         'Forward-looking and direct. Tell them what to do differently next time.',
+    'formal':        'Professional but still human. No jargon.',
   };
-  const toneInstructions = tone && !toneMap[tone]
+  const toneInstructions = (tone && !toneMap[tone]
     ? tone
-    : (toneMap[tone] || toneMap['plain-warm']);
+    : (toneMap[tone] || toneMap['plain-warm'])) + '\n\n' + VOICE_RULES;
 
   const styleMap = {
     'balanced':       'Acknowledge a specific strength first, then address the most important gap clearly.',
