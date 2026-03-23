@@ -167,6 +167,7 @@ ${gradingGuidance ? `\nINSTRUCTOR EXCEPTIONS — HARD RULES, OVERRIDE THE RUBRIC
 No em-dashes (— or --). Use periods or commas instead.
 No filler: never write "it's worth noting", "importantly", "overall", "in conclusion", "to be fair", "that said", "having said that", "I hope this helps", "I wanted to".
 No AI tells: no "delves into", "showcases", "demonstrates a nuanced", "commendable", "impressive grasp", "testament to", "robust", "leverages".
+No comparisons to other students. Never say "most students", "other students", "the class", "compared to peers", "one of the best", "stronger than most", "unlike your classmates". Each student is evaluated on their own work only.
 Short sentences. Plain words. One idea per sentence.
 Start with the student's first name only.
 Sound like a person talking, not a rubric being read.
@@ -199,7 +200,7 @@ If something is missing, say it plainly. If something is strong, name exactly wh
     : '1-2 sentences. ' + toneInstructions + ' Be specific. Reference something they actually wrote. Only include if score is not perfect.';
 
   const paragraphInstruction = isSkillAssessment
-    ? toneInstructions + ' ' + styleInstruction + ' Write ' + sentenceCount + ' sentences. Start with first name. Name the specific intellectual move they made. Compare briefly to what most students do. Be honest about gaps. End with something personal and forward-looking. Max 20 words per sentence.'
+    ? toneInstructions + ' ' + styleInstruction + ' Write ' + sentenceCount + ' sentences. Start with first name. Name the specific intellectual move they made. Be honest about gaps. End with something personal and forward-looking. Max 20 words per sentence.'
     : toneInstructions + ' ' + styleInstruction + ' Start with the student first name. ' + sentenceCount + ' sentences total. Max 18 words per sentence. No jargon. Write like talking to them directly.';
 
   // Include full assignment description if available — this is what students were asked to do

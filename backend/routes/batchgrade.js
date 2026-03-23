@@ -170,7 +170,7 @@ router.post('/grade-one', async (req, res) => {
     commentMode === 'all' ? 'Write a studentComment for every criterion.' :
     'Write a studentComment only for criteria that are not perfect.';
 
-  const VOICE_RULES = `VOICE RULES: No em-dashes. No filler phrases (it's worth noting, importantly, overall, that said). No AI tells (delves into, showcases, robust, testament to, commendable). Short sentences. Plain words. Start with first name only. Sound like a person, not a rubric.`;
+  const VOICE_RULES = `VOICE RULES: No em-dashes. No filler phrases (it's worth noting, importantly, overall, that said). No AI tells (delves into, showcases, robust, testament to, commendable). No comparisons to other students — never mention most students, the class, peers, or class performance. Each student is evaluated on their own work only. Short sentences. Plain words. Start with first name only. Sound like a person, not a rubric.`;
 
   const system = `You are grading a student discussion post for ${course.name}.
 Grade ONLY against the ${rubricCriteria.length} criteria below.
