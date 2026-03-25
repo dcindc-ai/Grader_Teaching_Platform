@@ -48,7 +48,7 @@ export default function InsightsTab({ course, password }) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `class-insights-${meta.assignmentName.replace(/[^a-z0-9]/gi,'_')}.pdf`;
+      a.download = `class-insights-${meta.assignmentName.replace(/[^a-z0-9]/gi,'_')}.docx`;
       a.click();
       URL.revokeObjectURL(url);
     } catch(e) { setError(e.message); }
@@ -78,7 +78,7 @@ export default function InsightsTab({ course, password }) {
           <button onClick={downloadPDF} disabled={generating}
             style={{ fontSize: 13, padding: '7px 16px', borderRadius: 6, border: 'none',
               background: accent, color: '#fff', cursor: 'pointer', fontWeight: 600, minWidth: 160 }}>
-            {generating ? '⏳ Generating…' : '⬇ Download PDF Handout'}
+            {generating ? '⏳ Generating…' : '⬇ Download Handout'}
           </button>
         )}
       </div>
@@ -197,12 +197,12 @@ export default function InsightsTab({ course, password }) {
             border: `1px solid ${accent}25`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>Ready to share with students</div>
-              <div style={{ fontSize: 12, color: 'var(--text3)' }}>PDF handout in {course.name} colors with topics, concepts, and resources</div>
+              <div style={{ fontSize: 12, color: 'var(--text3)' }}>Word doc handout in {course.name} colors with topics, concepts, and resources</div>
             </div>
             <button onClick={downloadPDF} disabled={generating}
               style={{ fontSize: 13, padding: '9px 20px', borderRadius: 8, border: 'none',
                 background: accent, color: '#fff', cursor: 'pointer', fontWeight: 600 }}>
-              {generating ? '⏳ Generating…' : '⬇ Download PDF'}
+              {generating ? '⏳ Generating…' : '⬇ Download Handout'}
             </button>
           </div>
         </div>

@@ -109,204 +109,176 @@ Requirements:
 });
 
 // POST /api/insights/pdf
-// Generates a PDF handout from analysis results
+// Generates a Word doc handout from analysis results
 router.post('/pdf', async (req, res) => {
   const { analysis, meta } = req.body;
   if (!analysis || !meta) return res.status(400).json({ error: 'analysis and meta required' });
 
-  const { execSync } = require('child_process');
-  const fs = require('fs');
-  const path = require('path');
-  const tmpFile = path.join('./uploads', `insights_${Date.now()}.pdf`);
-
-  // Hex to RGB
-  function hexToRgb(hex) {
-    const h = (hex || '#1a4fbf').replace('#', '');
-    return [parseInt(h.slice(0,2),16)/255, parseInt(h.slice(2,4),16)/255, parseInt(h.slice(4,6),16)/255];
-  }
-
-  const [r, g, b] = hexToRgb(meta.courseColor);
-  const lightR = r * 0.15 + 0.85;
-  const lightG = g * 0.15 + 0.85;
-  const lightB = b * 0.15 + 0.85;
-
-  const script = `
-import sys
-sys.stdout.reconfigure(encoding='utf-8')
-from reportlab.lib.pagesizes import letter
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch
-from reportlab.lib.colors import Color, HexColor, white, black
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
-from reportlab.lib.enums import TA_LEFT, TA_CENTER
-import json, textwrap
-
-data = json.loads(sys.argv[1])
-analysis = data['analysis']
-meta = data['meta']
-
-ACCENT = Color(${r}, ${g}, ${b})
-LIGHT = Color(${lightR}, ${lightG}, ${lightB})
-DARK = Color(${r*0.7}, ${g*0.7}, ${b*0.7})
-
-doc = SimpleDocTemplate('${tmpFile}', pagesize=letter,
-  leftMargin=0.75*inch, rightMargin=0.75*inch,
-  topMargin=0.75*inch, bottomMargin=0.75*inch)
-
-styles = getSampleStyleSheet()
-W = letter[0] - 1.5*inch
-
-def style(name, **kw):
-  s = styles[name].clone(name + str(id(kw)))
-  for k,v in kw.items(): setattr(s, k, v)
-  return s
-
-title_s = style('Normal', fontSize=22, fontName='Helvetica-Bold', textColor=white, leading=28)
-sub_s = style('Normal', fontSize=11, fontName='Helvetica', textColor=white, leading=16)
-section_s = style('Normal', fontSize=13, fontName='Helvetica-Bold', textColor=ACCENT, leading=18, spaceAfter=4)
-body_s = style('Normal', fontSize=10, fontName='Helvetica', textColor=black, leading=15, spaceAfter=4)
-small_s = style('Normal', fontSize=9, fontName='Helvetica', textColor=Color(0.35,0.35,0.35), leading=13)
-concept_title_s = style('Normal', fontSize=11, fontName='Helvetica-Bold', textColor=DARK, leading=15)
-label_s = style('Normal', fontSize=8, fontName='Helvetica-Bold', textColor=ACCENT, leading=12, spaceAfter=1)
-
-story = []
-
-# Header block
-header_table = Table([[
-  Paragraph(meta['courseName'], title_s),
-  Paragraph(meta['institution'], sub_s)
-]], colWidths=[W*0.65, W*0.35])
-header_table.setStyle(TableStyle([
-  ('BACKGROUND', (0,0), (-1,-1), ACCENT),
-  ('TOPPADDING', (0,0), (-1,-1), 16),
-  ('BOTTOMPADDING', (0,0), (-1,-1), 16),
-  ('LEFTPADDING', (0,0), (0,-1), 16),
-  ('RIGHTPADDING', (-1,0), (-1,-1), 16),
-  ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-  ('ALIGN', (-1,0), (-1,-1), 'RIGHT'),
-]))
-story.append(header_table)
-story.append(Spacer(1, 8))
-
-# Assignment + stats bar
-stats_bar = Table([[
-  Paragraph('<b>' + meta['assignmentName'] + '</b>', style('Normal', fontSize=12, fontName='Helvetica-Bold', textColor=DARK)),
-  Paragraph('Class avg: <b>' + str(meta['avgScore']) + ' / ' + str(meta['maxScore']) + '</b>  |  Students graded: <b>' + str(meta['totalStudents']) + '</b>', 
-    style('Normal', fontSize=10, textColor=Color(0.3,0.3,0.3))),
-]], colWidths=[W*0.55, W*0.45])
-stats_bar.setStyle(TableStyle([
-  ('BACKGROUND', (0,0), (-1,-1), LIGHT),
-  ('TOPPADDING', (0,0), (-1,-1), 10),
-  ('BOTTOMPADDING', (0,0), (-1,-1), 10),
-  ('LEFTPADDING', (0,0), (-1,-1), 14),
-  ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-  ('ALIGN', (-1,0), (-1,-1), 'RIGHT'),
-]))
-story.append(stats_bar)
-story.append(Spacer(1, 16))
-
-# Class snapshot
-story.append(Paragraph('CLASS OVERVIEW', section_s))
-story.append(HRFlowable(width=W, thickness=1.5, color=ACCENT, spaceAfter=8))
-story.append(Paragraph(analysis.get('classSnapshot',''), body_s))
-story.append(Spacer(1, 6))
-
-# Instructor note
-if analysis.get('instructorNote'):
-  note_table = Table([[Paragraph('"' + analysis['instructorNote'] + '"', style('Normal', fontSize=10, fontName='Helvetica-Oblique', textColor=DARK, leading=15))]], colWidths=[W])
-  note_table.setStyle(TableStyle([
-    ('BACKGROUND', (0,0), (-1,-1), LIGHT),
-    ('LEFTPADDING', (0,0), (-1,-1), 14),
-    ('RIGHTPADDING', (0,0), (-1,-1), 14),
-    ('TOPPADDING', (0,0), (-1,-1), 10),
-    ('BOTTOMPADDING', (0,0), (-1,-1), 10),
-    ('LINECOLOR', (0,0), (0,-1), ACCENT),
-    ('LINEBEFORE', (0,0), (0,-1), 3, ACCENT),
-  ]))
-  story.append(note_table)
-  story.append(Spacer(1, 16))
-
-# Concepts students missed
-missed = analysis.get('missedConcepts', [])
-if missed:
-  story.append(Paragraph('CONCEPTS TO REVISIT', section_s))
-  story.append(HRFlowable(width=W, thickness=1.5, color=ACCENT, spaceAfter=8))
-  for c in missed:
-    n = c.get('howManyStudents', '')
-    count_str = (' (' + str(n) + ' of ' + str(meta['totalStudents']) + ' students)') if n else ''
-    story.append(Paragraph(c.get('concept','') + count_str, concept_title_s))
-    story.append(Paragraph(c.get('explanation',''), body_s))
-    if c.get('whatStudentsDid'):
-      story.append(Paragraph('<i>What students did instead:</i> ' + c['whatStudentsDid'], small_s))
-    story.append(Spacer(1, 8))
-  story.append(Spacer(1, 8))
-
-# Topic list
-topics = analysis.get('topicList', [])
-if topics:
-  story.append(Paragraph('TOPICS FOR FURTHER STUDY', section_s))
-  story.append(HRFlowable(width=W, thickness=1.5, color=ACCENT, spaceAfter=8))
-  rows = []
-  for t in topics:
-    rows.append([
-      Paragraph(t.get('topic',''), concept_title_s),
-      Paragraph(t.get('explanation',''), small_s)
-    ])
-  topic_table = Table(rows, colWidths=[W*0.28, W*0.72])
-  topic_table.setStyle(TableStyle([
-    ('VALIGN', (0,0), (-1,-1), 'TOP'),
-    ('TOPPADDING', (0,0), (-1,-1), 6),
-    ('BOTTOMPADDING', (0,0), (-1,-1), 6),
-    ('LEFTPADDING', (0,0), (-1,-1), 6),
-    ('LINEBELOW', (0,0), (-1,-2), 0.5, Color(0.85,0.85,0.85)),
-    ('ROWBACKGROUNDS', (0,0), (-1,-1), [white, LIGHT]),
-  ]))
-  story.append(topic_table)
-  story.append(Spacer(1, 16))
-
-# Resources
-resources = analysis.get('resources', [])
-if resources:
-  story.append(Paragraph('RECOMMENDED RESOURCES', section_s))
-  story.append(HRFlowable(width=W, thickness=1.5, color=ACCENT, spaceAfter=8))
-  for res in resources:
-    rtype = res.get('type','').upper()
-    title_line = '<b>' + res.get('title','') + '</b>'
-    if rtype: title_line += '  <font color="#888888" size="8">[' + rtype + ']</font>'
-    story.append(Paragraph(title_line, style('Normal', fontSize=11, fontName='Helvetica', leading=15)))
-    story.append(Paragraph(res.get('description',''), small_s))
-    url = res.get('url','')
-    if url:
-      story.append(Paragraph('<link href="' + url + '"><font color="#2563eb">' + url + '</font></link>', 
-        style('Normal', fontSize=8, fontName='Helvetica', leading=12)))
-    story.append(Spacer(1, 8))
-
-# Footer
-story.append(Spacer(1, 12))
-story.append(HRFlowable(width=W, thickness=0.5, color=Color(0.8,0.8,0.8), spaceAfter=6))
-story.append(Paragraph('Generated by Always On Learning  |  ' + meta['courseName'] + '  |  ' + meta['institution'], 
-  style('Normal', fontSize=8, textColor=Color(0.6,0.6,0.6), alignment=1)))
-
-doc.build(story)
-print('OK')
-`;
-
-  const pyScript = '/tmp/insights_pdf.py';
-  fs.writeFileSync(pyScript, script);
-
   try {
-    const jsonArg = JSON.stringify(JSON.stringify({ analysis, meta }));
-    execSync(`python3 ${pyScript} ${jsonArg}`, { timeout: 30000 });
-    const pdfBuffer = fs.readFileSync(tmpFile);
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="class-insights-${meta.assignmentName.replace(/[^a-z0-9]/gi,'_')}.pdf"`);
-    res.send(pdfBuffer);
+    const {
+      Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
+      BorderStyle, WidthType, ShadingType, AlignmentType, HeadingLevel
+    } = require('docx');
+    const fs = require('fs');
+
+    function hexColor(hex) { return (hex || '#1a4fbf').replace('#', ''); }
+    const accentHex = hexColor(meta.courseColor);
+    const lightHex = 'F0F4FF';
+
+    const border = { style: BorderStyle.SINGLE, size: 1, color: 'DDDDDD' };
+    const borders = { top: border, bottom: border, left: border, right: border };
+    const noBorders = { top: { style: BorderStyle.NONE }, bottom: { style: BorderStyle.NONE }, left: { style: BorderStyle.NONE }, right: { style: BorderStyle.NONE } };
+
+    function para(text, opts = {}) {
+      return new Paragraph({
+        children: [new TextRun({ text: text || '', ...opts })],
+        spacing: { after: opts.after || 120 }
+      });
+    }
+
+    function section(label) {
+      return new Paragraph({
+        children: [new TextRun({ text: label.toUpperCase(), bold: true, size: 20, color: accentHex, font: 'Arial' })],
+        spacing: { before: 240, after: 80 },
+        border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: accentHex, space: 4 } }
+      });
+    }
+
+    const children = [];
+
+    // Header
+    children.push(new Table({
+      width: { size: 9360, type: WidthType.DXA },
+      columnWidths: [6500, 2860],
+      rows: [new TableRow({ children: [
+        new TableCell({
+          borders: noBorders,
+          width: { size: 6500, type: WidthType.DXA },
+          shading: { fill: accentHex, type: ShadingType.CLEAR },
+          margins: { top: 180, bottom: 180, left: 180, right: 180 },
+          children: [
+            new Paragraph({ children: [new TextRun({ text: meta.courseName, bold: true, size: 32, color: 'FFFFFF', font: 'Arial' })] }),
+            new Paragraph({ children: [new TextRun({ text: meta.assignmentName, size: 20, color: 'DDDDFF', font: 'Arial' })] }),
+          ]
+        }),
+        new TableCell({
+          borders: noBorders,
+          width: { size: 2860, type: WidthType.DXA },
+          shading: { fill: accentHex, type: ShadingType.CLEAR },
+          margins: { top: 180, bottom: 180, left: 120, right: 180 },
+          children: [
+            new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun({ text: meta.institution || '', size: 18, color: 'DDDDFF', font: 'Arial' })] }),
+            new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun({ text: `Avg: ${meta.avgScore} / ${meta.maxScore}`, bold: true, size: 22, color: 'FFFFFF', font: 'Arial' })] }),
+            new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun({ text: `${meta.totalStudents} students graded`, size: 16, color: 'DDDDFF', font: 'Arial' })] }),
+          ]
+        })
+      ]})]
+    }));
+
+    children.push(para('', { after: 160 }));
+
+    // Class overview
+    if (analysis.classSnapshot) {
+      children.push(section('Class Overview'));
+      children.push(para(analysis.classSnapshot, { size: 22, font: 'Arial' }));
+    }
+
+    // Instructor note
+    if (analysis.instructorNote) {
+      children.push(para('', { after: 80 }));
+      children.push(new Table({
+        width: { size: 9360, type: WidthType.DXA },
+        columnWidths: [9360],
+        rows: [new TableRow({ children: [new TableCell({
+          borders: { top: border, bottom: border, right: border, left: { style: BorderStyle.SINGLE, size: 12, color: accentHex } },
+          shading: { fill: lightHex, type: ShadingType.CLEAR },
+          margins: { top: 120, bottom: 120, left: 160, right: 160 },
+          children: [para(analysis.instructorNote, { italics: true, size: 22, font: 'Arial', color: '444444' })]
+        })]})],
+      }));
+    }
+
+    // Missed concepts
+    if (analysis.missedConcepts?.length > 0) {
+      children.push(para('', { after: 80 }));
+      children.push(section('Concepts to Revisit'));
+      for (const c of analysis.missedConcepts) {
+        const countStr = c.howManyStudents ? ` (${c.howManyStudents} of ${meta.totalStudents} students)` : '';
+        children.push(new Paragraph({
+          children: [new TextRun({ text: (c.concept || '') + countStr, bold: true, size: 22, color: accentHex, font: 'Arial' })],
+          spacing: { before: 120, after: 40 }
+        }));
+        if (c.explanation) children.push(para(c.explanation, { size: 20, font: 'Arial' }));
+        if (c.whatStudentsDid) children.push(para('What students did instead: ' + c.whatStudentsDid, { size: 18, italics: true, color: '666666', font: 'Arial' }));
+      }
+    }
+
+    // Topic list
+    if (analysis.topicList?.length > 0) {
+      children.push(para('', { after: 80 }));
+      children.push(section('Topics for Further Study'));
+      children.push(new Table({
+        width: { size: 9360, type: WidthType.DXA },
+        columnWidths: [2500, 6860],
+        rows: analysis.topicList.map((t, i) => new TableRow({ children: [
+          new TableCell({
+            borders, width: { size: 2500, type: WidthType.DXA },
+            shading: { fill: i % 2 === 0 ? lightHex : 'FFFFFF', type: ShadingType.CLEAR },
+            margins: { top: 80, bottom: 80, left: 120, right: 120 },
+            children: [para(t.topic || '', { bold: true, size: 20, color: accentHex, font: 'Arial', after: 0 })]
+          }),
+          new TableCell({
+            borders, width: { size: 6860, type: WidthType.DXA },
+            shading: { fill: i % 2 === 0 ? lightHex : 'FFFFFF', type: ShadingType.CLEAR },
+            margins: { top: 80, bottom: 80, left: 120, right: 120 },
+            children: [para(t.explanation || '', { size: 18, font: 'Arial', after: 0 })]
+          })
+        ]}))
+      }));
+    }
+
+    // Resources
+    if (analysis.resources?.length > 0) {
+      children.push(para('', { after: 80 }));
+      children.push(section('Recommended Resources'));
+      for (const r of analysis.resources) {
+        children.push(new Paragraph({
+          children: [
+            new TextRun({ text: (r.title || ''), bold: true, size: 22, font: 'Arial' }),
+            r.type ? new TextRun({ text: '  [' + r.type.toUpperCase() + ']', size: 18, color: '888888', font: 'Arial' }) : new TextRun({ text: '' })
+          ],
+          spacing: { before: 120, after: 40 }
+        }));
+        if (r.description) children.push(para(r.description, { size: 18, font: 'Arial' }));
+        if (r.url) children.push(para(r.url, { size: 16, color: '2563EB', font: 'Arial' }));
+      }
+    }
+
+    // Footer line
+    children.push(para('', { after: 80 }));
+    children.push(new Paragraph({
+      children: [new TextRun({ text: `Generated by Always On Learning  |  ${meta.courseName}  |  ${meta.institution || ''}`, size: 16, color: '999999', font: 'Arial' })],
+      alignment: AlignmentType.CENTER,
+      border: { top: { style: BorderStyle.SINGLE, size: 2, color: 'DDDDDD', space: 4 } },
+      spacing: { before: 160 }
+    }));
+
+    const doc = new Document({
+      styles: { default: { document: { run: { font: 'Arial', size: 22 } } } },
+      sections: [{
+        properties: { page: { size: { width: 12240, height: 15840 }, margin: { top: 720, right: 720, bottom: 720, left: 720 } } },
+        children
+      }]
+    });
+
+    const buffer = await Packer.toBuffer(doc);
+    const safeName = (meta.assignmentName || 'insights').replace(/[^a-z0-9]/gi, '_');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename="class-insights-${safeName}.docx"`);
+    res.send(buffer);
   } catch(e) {
-    console.error('PDF generation error:', e.message);
+    console.error('Insights doc error:', e.message);
     res.status(500).json({ error: e.message });
-  } finally {
-    try { fs.unlinkSync(tmpFile); } catch(_) {}
-    try { fs.unlinkSync(pyScript); } catch(_) {}
   }
 });
 
