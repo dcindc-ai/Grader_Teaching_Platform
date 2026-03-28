@@ -462,7 +462,7 @@ router.post('/batch', upload.any(), async (req, res) => {
 
   const insertGrade = db.prepare(`
     INSERT INTO grades (id,course_id,assignment_id,student_name,assignment_name,file_name,total,max_score,scores,comments,summary,key_strength,key_improvement,instructor_paragraph,criteria_feedback)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   `);
   const insertAO = db.prepare(`
     INSERT INTO always_on (id,grade_id,student_name,course_id,assignment_id,assignment_name,weak_area,feedback_sentences,links)
@@ -537,7 +537,8 @@ router.post('/batch', upload.any(), async (req, res) => {
         JSON.stringify(gradeResult.scores || {}),
         JSON.stringify(gradeResult.comments || {}),
         gradeResult.summary || '', gradeResult.key_strength || '', gradeResult.key_improvement || '',
-        gradeResult.instructor_paragraph || ''
+        gradeResult.instructor_paragraph || '',
+        JSON.stringify(gradeResult.criteriaFeedback || [])
       );
 
       // Save original PDF for redlined output
