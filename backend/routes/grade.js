@@ -329,7 +329,7 @@ Return ONLY valid JSON, no fences:
 
 // ─── Grade a single submission ────────────────────────────────────────────
 
-async function gradeOne(filePath, assignment, course, skipAlwaysOn=false, originalName='') {
+async function gradeOne(filePath, assignment, course, skipAlwaysOn=false, originalName='', gradeOptions={}) {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   if (assignment.grading_guidance) {
     console.log(`[Grading guidance active for ${assignment.name}]: ${assignment.grading_guidance.slice(0,100)}`);
@@ -501,7 +501,7 @@ router.post('/batch', upload.any(), async (req, res) => {
       let gradeResult, alwaysOn;
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
-          ({ gradeResult, alwaysOn } = await gradeOne(file.path, assignment, course, false, originalName));
+          ({ gradeResult, alwaysOn } = await gradeOne(file.path, assignment, course, false, originalName, gradeOptions));
           break;
         } catch (e) {
           if (e.message.includes('429') && attempt < 2) {
