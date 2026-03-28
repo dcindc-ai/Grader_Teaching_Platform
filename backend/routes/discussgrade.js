@@ -11,32 +11,54 @@ router.post('/parse-rubric', (req, res) => {
   if (!csv) return res.status(400).json({ error: 'csv required' });
 
   try {
-    const lines = csv.trim().split('\n');
+    // Parse CSV properly handling quoted fields with embedded commas/newlines
+    function parseCSV(text) {
+      const rows = [];
+      let row = [], field = '', inQuote = false;
+      for (let i = 0; i < text.length; i++) {
+        const ch = text[i], next = text[i+1];
+        if (ch === '"') {
+          if (inQuote && next === '"') { field += '"'; i++; }
+          else inQuote = !inQuote;
+        } else if (ch === ',' && !inQuote) {
+          row.push(field.trim()); field = '';
+        } else if ((ch === '\n' || ch === '\r') && !inQuote) {
+          if (ch === '\r' && next === '\n') i++;
+          row.push(field.trim()); field = '';
+          if (row.some(f => f)) rows.push(row);
+          row = [];
+        } else {
+          field += ch;
+        }
+      }
+      if (field || row.length) { row.push(field.trim()); if (row.some(f => f)) rows.push(row); }
+      return rows;
+    }
+
+    const rows = parseCSV(csv);
+    if (rows.length < 2) return res.status(400).json({ error: 'CSV has no data rows' });
+
+    // Expected columns: Criterion, Points, Accomplished, Accomplished Points,
+    //                   Proficient, Proficient Points, Needs Improvement, Needs Improvement Points,
+    //                   Unacceptable, Unacceptable Points
+    const RATING_NAMES = ['Accomplished', 'Proficient', 'Needs Improvement', 'Unacceptable'];
     const criteria = [];
 
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i];
-      // Parse CSV with quoted fields
-      const fields = [];
-      let field = '', inQuote = false;
-      for (let c = 0; c < line.length; c++) {
-        if (line[c] === '"') { inQuote = !inQuote; continue; }
-        if (line[c] === ',' && !inQuote) { fields.push(field); field = ''; continue; }
-        field += line[c];
-      }
-      fields.push(field);
-
-      if (fields.length < 6) continue;
-      const criteriaName = fields[1]?.trim();
+    for (let i = 1; i < rows.length; i++) {
+      const f = rows[i];
+      const criteriaName = f[0]?.trim();
       if (!criteriaName) continue;
 
+      // Ratings at: [2,3], [4,5], [6,7], [8,9] = (description, points)
       const ratings = [];
-      // Ratings start at index 4, groups of 3 (name, description, points)
-      for (let j = 4; j + 2 < fields.length; j += 3) {
-        const name = fields[j]?.trim();
-        const desc = fields[j + 1]?.trim();
-        const pts = parseFloat(fields[j + 2]);
-        if (name && !isNaN(pts)) ratings.push({ name, description: desc, points: pts });
+      for (let r = 0; r < RATING_NAMES.length; r++) {
+        const descIdx = 2 + r * 2;
+        const ptsIdx = 3 + r * 2;
+        const desc = f[descIdx]?.trim();
+        const pts = parseFloat(f[ptsIdx]);
+        if (desc && !isNaN(pts)) {
+          ratings.push({ name: RATING_NAMES[r], description: desc, points: pts });
+        }
       }
 
       if (ratings.length > 0) {
@@ -48,6 +70,8 @@ router.post('/parse-rubric', (req, res) => {
         });
       }
     }
+
+    if (!criteria.length) return res.status(400).json({ error: 'No criteria found — check CSV format' });
 
     const totalMax = criteria.reduce((a, c) => a + c.maxPoints, 0);
     res.json({ criteria, totalMax });
