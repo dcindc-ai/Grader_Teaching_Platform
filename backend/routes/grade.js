@@ -112,6 +112,19 @@ const DIMS = ['clarity','logic','structure','tone','style'];
 // ─── Build grading system prompt ─────────────────────────────────────────
 
 function buildGradePrompt(assignment, course, examples, materials) {
+  // Parse rubric criteria for dynamic schema
+  let rubricCriteria = [];
+  try {
+    if (assignment.rubric_criteria) rubricCriteria = JSON.parse(assignment.rubric_criteria);
+  } catch(e) {}
+
+  // Build rubric text from criteria or fall back to stored rubric text
+  const rubricText = rubricCriteria.length > 0
+    ? rubricCriteria.map((c, i) => {
+        const ratings = (c.ratings || []).map(r => `  - ${r.name} (${r.points}pts): ${r.description || r.name}`).join('\n');
+        return `${i+1}. ${c.name} (${c.maxPoints} pts max)\n${ratings}`;
+      }).join('\n\n')
+    : (assignment.rubric || 'No rubric provided');
   const sliders = JSON.parse(course.sliders || '{}');
   const sliderStr = DIMS.map(d => `${d}: ${sliders[d]||3}/5`).join(', ');
   const exStr = examples.length
@@ -193,13 +206,8 @@ ${exStr}
 Return ONLY valid JSON, no markdown fences:
 {
   "studentName": "from header or Unknown",
-  "scores": {"annotated_product":0,"narrative":0,"context":0,"overall_quality":0,"total":0},
-  "comments": {
-    "annotated_product":[{"type":"positive","text":"..."},{"type":"negative","text":"...","rewrite":null}],
-    "narrative":[{"type":"positive","text":"..."},{"type":"negative","text":"...","rewrite":"Suggested rewrite: ..."}],
-    "context":[{"type":"positive","text":"..."},{"type":"negative","text":"...","rewrite":null}],
-    "overall_quality":[{"type":"positive","text":"..."},{"type":"negative","text":"...","rewrite":null}]
-  },
+  "scores": {${rubricCriteria.length > 0 ? rubricCriteria.map(c => `"${c.name.toLowerCase().replace(/[^a-z0-9]/g,'_')}":0`).join(',') + ',"total":0' : '"total":0'}},
+  "comments": {${rubricCriteria.length > 0 ? rubricCriteria.map(c => `"${c.name.toLowerCase().replace(/[^a-z0-9]/g,'_')}":[{"type":"positive","text":"..."},{"type":"negative","text":"...","rewrite":null}]`).join(',') : '"general":[{"type":"positive","text":"..."}]'}},
   "summary":"2-3 sentence overall assessment",
   "key_strength":"single most notable strength",
   "key_improvement":"single most important area to improve",
