@@ -149,10 +149,18 @@ export default function GradeTab({ course, password, activeAssignmentId, queue, 
           )}
 
           {queue.some(x => x.status !== 'pending') && (
-            <button className="ghost" style={{ width: '100%', marginTop: 6, fontSize: 12 }}
-              onClick={() => onQueue(q => q.filter(x => x.status === 'pending'))}>
-              Clear completed
-            </button>
+            <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+              <button className="ghost" style={{ flex: 1, fontSize: 12 }}
+                onClick={() => onQueue(q => q.filter(x => x.status === 'pending'))}>
+                Clear completed
+              </button>
+              {queue.some(x => x.status === 'grading') && (
+                <button className="ghost" style={{ flex: 1, fontSize: 12, color: 'var(--red)' }}
+                  onClick={() => onQueue(q => q.map(x => x.status === 'grading' ? { ...x, status: 'error', errorMsg: 'Cancelled' } : x))}>
+                  ✕ Cancel stuck
+                </button>
+              )}
+            </div>
           )}
         </div>
 
