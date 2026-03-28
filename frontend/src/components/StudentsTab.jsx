@@ -114,18 +114,21 @@ export default function StudentsTab({ course, password }) {
   }
 
   async function removeStudent(id, name) {
-    if (!confirm(`Remove ${name} from the roster? Grades are kept.`)) return;
+    if (!confirm(`Remove ${name} from the roster?\n\nThis will also permanently delete all their grades. This cannot be undone.`)) return;
     await fetch(`${BASE}/api/students/${id}`, { method: 'DELETE', headers: { 'x-admin-password': password } });
+    // Also delete all grades for this student
+    await fetch(`${BASE}/api/grade?studentId=${id}`, { method: 'DELETE', headers: { 'x-admin-password': password } });
     loadStudents();
   }
 
   async function bulkDelete() {
     if (!checkedIds.size) return;
-    if (!confirm(`Remove ${checkedIds.size} student${checkedIds.size > 1 ? 's' : ''} from the roster? Grades are kept.`)) return;
+    if (!confirm(`Remove ${checkedIds.size} student${checkedIds.size > 1 ? 's' : ''} from the roster?\n\nThis will also permanently delete all their grades. This cannot be undone.`)) return;
     setBulkDeleting(true);
-    await Promise.all([...checkedIds].map(id =>
-      fetch(`${BASE}/api/students/${id}`, { method: 'DELETE', headers: { 'x-admin-password': password } })
-    ));
+    await Promise.all([...checkedIds].map(async id => {
+      await fetch(`${BASE}/api/students/${id}`, { method: 'DELETE', headers: { 'x-admin-password': password } });
+      await fetch(`${BASE}/api/grade?studentId=${id}`, { method: 'DELETE', headers: { 'x-admin-password': password } });
+    }));
     setCheckedIds(new Set());
     setBulkDeleting(false);
     loadStudents();

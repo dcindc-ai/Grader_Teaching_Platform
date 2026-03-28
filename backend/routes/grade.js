@@ -207,12 +207,21 @@ Return ONLY valid JSON, no markdown fences:
 {
   "studentName": "from header or Unknown",
   "scores": {${rubricCriteria.length > 0 ? rubricCriteria.map(c => `"${c.name.toLowerCase().replace(/[^a-z0-9]/g,'_')}":0`).join(',') + ',"total":0' : '"total":0'}},
+  "criteriaFeedback": [${rubricCriteria.length > 0 ? rubricCriteria.map(c => `{
+    "criterionName": "${c.name}",
+    "score": 0,
+    "maxPoints": ${c.maxPoints},
+    "rating": "Accomplished|Proficient|Needs Improvement|Unacceptable",
+    "strengths": "1-2 sentences referencing specific things the student wrote or did well in this section",
+    "gaps": "1-2 sentences naming exactly what is missing or weak — reference specific words or sections",
+    "suggestion": "1 concrete sentence on what would make this section stronger — optional if perfect"
+  }`).join(',') : ''}],
   "comments": {${rubricCriteria.length > 0 ? rubricCriteria.map(c => `"${c.name.toLowerCase().replace(/[^a-z0-9]/g,'_')}":[{"type":"positive","text":"..."},{"type":"negative","text":"...","rewrite":null}]`).join(',') : '"general":[{"type":"positive","text":"..."}]'}},
   "summary":"2-3 sentence overall assessment",
   "key_strength":"single most notable strength",
   "key_improvement":"single most important area to improve",
   "weak_areas":["list","of","specific","weak","areas","for","always-on","targeting"],
-  "instructor_paragraph":"A personalized 3-4 sentence paragraph in the instructor's voice. Use ONLY the student's FIRST NAME. Lead with genuine encouragement about something specific they did well. Give honest critical feedback with concrete suggestions. End with a forward-looking note. Warm and direct.
+  "instructor_paragraph":"A personalized 3-4 sentence paragraph in the instructor's voice. Use ONLY the student's FIRST NAME. Start with the single strongest thing they did — be specific. Name one key gap directly. End with something forward-looking. Plain language, no em-dashes, no AI filler phrases.
 - No sentence may exceed 18 words. Break long sentences into two.
 - Avoid colons, semicolons, and em dashes. Use periods instead.
 - Write in plain, direct prose."
@@ -617,8 +626,9 @@ router.delete('/:id', (req, res) => {
 });
 
 router.delete('/', (req, res) => {
-  const { courseId, assignmentId } = req.query;
-  if (assignmentId) db.prepare('DELETE FROM grades WHERE assignment_id=?').run(assignmentId);
+  const { courseId, assignmentId, studentId } = req.query;
+  if (studentId) db.prepare('DELETE FROM grades WHERE student_id=?').run(studentId);
+  else if (assignmentId) db.prepare('DELETE FROM grades WHERE assignment_id=?').run(assignmentId);
   else if (courseId) db.prepare('DELETE FROM grades WHERE course_id=?').run(courseId);
   res.json({ ok: true });
 });
