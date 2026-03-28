@@ -239,6 +239,11 @@ ${assignment.grading_override}
 CALIBRATION EXAMPLES:
 ${exStr}
 
+FEEDBACK VOICE — FOLLOW EXACTLY:
+Tone: ${toneInstructions}
+Sentences in instructor_paragraph: EXACTLY ${sentences}. Not more. Not fewer. Count them.
+Voice rules: ${VOICE_RULES}
+
 Return ONLY valid JSON, no markdown fences:
 {
   "studentName": "from header or Unknown",

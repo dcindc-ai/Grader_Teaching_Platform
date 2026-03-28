@@ -224,8 +224,8 @@ If something is missing, say it plainly. If something is strong, name exactly wh
     : '1-2 sentences. ' + toneInstructions + ' Be specific. Reference something they actually wrote. Only include if score is not perfect.';
 
   const paragraphInstruction = isSkillAssessment
-    ? toneInstructions + ' ' + styleInstruction + ' Write ' + sentenceCount + ' sentences. Start with first name. Name the specific intellectual move they made. Be honest about gaps. End with something personal and forward-looking. Max 20 words per sentence.'
-    : toneInstructions + ' ' + styleInstruction + ' Start with the student first name. ' + sentenceCount + ' sentences total. Max 18 words per sentence. No jargon. Write like talking to them directly.';
+    ? toneInstructions + ' ' + styleInstruction + ' Write EXACTLY ' + sentenceCount + ' sentences — no more, no fewer. Count them before finalizing. Start with first name only. Name the specific intellectual move they made. Be honest about gaps. End with something personal and forward-looking. Max 20 words per sentence. Address the student as "you" throughout.'
+    : toneInstructions + ' ' + styleInstruction + ' Write EXACTLY ' + sentenceCount + ' sentences — count them. Start with first name only. Max 18 words per sentence. No jargon. Address the student as "you" throughout, not "the student".';
 
   // Include full assignment description if available — this is what students were asked to do
   const assignmentInstructions = assignmentRecord?.description || '';
