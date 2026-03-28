@@ -131,9 +131,16 @@ router.get('/docx/:gradeId', async (req, res) => {
     } catch(e) {}
 
     // Build criteria from rubric or fall back to scores keys
-    const criteriaEntries = rubricCriteria.length > 0
-      ? rubricCriteria.map(c => ({ label: c.name, max: c.maxPoints, val: s[c.name] || 0 }))
-      : Object.entries(s).map(([k, v]) => ({ label: k, max: assignment.max_score / Math.max(Object.keys(s).length, 1), val: v }));
+    // Use criteriaFeedback scores if available (reflects saved edits), else fall back
+    const cfArray = grade.criteriaFeedback || [];
+    const criteriaEntries = cfArray.length > 0
+      ? cfArray.map(cf => ({ label: cf.criterionName, max: cf.maxPoints, val: cf.score || 0 }))
+      : rubricCriteria.length > 0
+        ? rubricCriteria.map(c => {
+            const key = c.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+            return { label: c.name, max: c.maxPoints, val: s[key] || s[c.name] || 0 };
+          })
+        : Object.entries(s).filter(([k]) => k !== 'total').map(([k, v]) => ({ label: k.replace(/_/g,' ').replace(/\w/g,c=>c.toUpperCase()), max: assignment.max_score / Math.max(Object.keys(s).length, 1), val: v }));
 
     const colCount = Math.min(criteriaEntries.length, 4);
     const colWidth = Math.floor(9360 / colCount);
