@@ -139,11 +139,26 @@ function buildGradePrompt(assignment, course, examples, materials, gradeOptions 
     if (assignment.rubric_criteria) rubricCriteria = JSON.parse(assignment.rubric_criteria);
   } catch(e) {}
 
+  // If no structured criteria, try to parse from text rubric (CRITERION N: ... format)
+  if (rubricCriteria.length === 0 && assignment.rubric) {
+    const criterionMatches = assignment.rubric.match(/CRITERION\s+\d+:\s*([^(]+)\((\d+(?:\.\d+)?)\s*pts?\)/gi);
+    if (criterionMatches) {
+      rubricCriteria = criterionMatches.map(m => {
+        const nameMatch = m.match(/CRITERION\s+\d+:\s*([^(]+)\(/i);
+        const ptsMatch = m.match(/\((\d+(?:\.\d+)?)\s*pts?\)/i);
+        return {
+          name: (nameMatch?.[1] || '').trim(),
+          maxPoints: parseFloat(ptsMatch?.[1] || 1)
+        };
+      }).filter(c => c.name);
+    }
+  }
+
   // Build rubric text from criteria or fall back to stored rubric text
   const rubricText = rubricCriteria.length > 0
     ? rubricCriteria.map((c, i) => {
         const ratings = (c.ratings || []).map(r => `  - ${r.name} (${r.points}pts): ${r.description || r.name}`).join('\n');
-        return `${i+1}. ${c.name} (${c.maxPoints} pts max)\n${ratings}`;
+        return `${i+1}. ${c.name} (${c.maxPoints} pts max)\n${ratings || '  (see rubric text above)'}`;
       }).join('\n\n')
     : (assignment.rubric || 'No rubric provided');
   const sliders = JSON.parse(course.sliders || '{}');

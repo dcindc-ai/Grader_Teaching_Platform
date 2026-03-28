@@ -317,14 +317,23 @@ export default function ReviewPanel({ grade: initialGrade, assignment, password,
           </div>
 
           {/* Per-criterion feedback — Canvas rubric style */}
-          {(grade.criteriaFeedback?.length > 0 ? grade.criteriaFeedback : sections.map(({ key, label, max: mx }) => ({
-            criterionName: label,
-            score: parseFloat(s[key]) || 0,
-            maxPoints: mx,
-            rating: '',
-            strengths: (grade.comments?.[key] || []).filter(c => c.type === 'positive').map(c => c.text).join(' '),
-            gaps: (grade.comments?.[key] || []).filter(c => c.type === 'negative').map(c => c.text).join(' '),
-          }))).map((cf, i) => {
+          {(() => {
+            // Build display list — prefer criteriaFeedback, fall back to sections+comments
+            let items = [];
+            if (grade.criteriaFeedback?.length > 0) {
+              items = grade.criteriaFeedback;
+            } else if (sections.length > 0) {
+              items = sections.map(({ key, label, max: mx }) => ({
+                criterionName: label,
+                score: parseFloat(s[key]) || 0,
+                maxPoints: mx,
+                rating: '',
+                strengths: (grade.comments?.[key] || []).filter(c => c.type === 'positive').map(c => c.text).join(' '),
+                gaps: (grade.comments?.[key] || []).filter(c => c.type === 'negative').map(c => c.text).join(' '),
+              }));
+            }
+            return items;
+          })().map((cf, i) => {
             const key = cf.criterionName?.toLowerCase().replace(/[^a-z0-9]/g, '_');
             const score = parseFloat(cf.score ?? s[key]) || 0;
             const mx = cf.maxPoints || sections.find(s => s.key === key)?.max || 1;
