@@ -111,7 +111,28 @@ const DIMS = ['clarity','logic','structure','tone','style'];
 
 // ─── Build grading system prompt ─────────────────────────────────────────
 
-function buildGradePrompt(assignment, course, examples, materials) {
+function buildGradePrompt(assignment, course, examples, materials, gradeOptions = {}) {
+  const tone = gradeOptions.tone || 'plain-warm';
+  const style = gradeOptions.style || 'balanced';
+  const sentences = gradeOptions.sentences || 4;
+
+  const toneMap = {
+    'plain-warm':    'Conversational and warm. Like a professor who has actually read the work.',
+    'plain':         'Direct and plain. Short sentences. No filler.',
+    'conversational':'Talk to them like a person. Informal but substantive.',
+    'encouraging':   'Lead with a specific strength. Be genuine, not generic.',
+    'coach':         'Forward-looking and direct. Tell them what to do differently.',
+    'formal':        'Professional but still human. No jargon.',
+  };
+  const styleMap = {
+    'balanced':       'Acknowledge a specific strength first, then the most important gap.',
+    'strength-first': 'Open with what they genuinely did well. Then transition to what needs work.',
+    'gap-first':      'Lead with the most important thing to fix. Then acknowledge what worked.',
+    'growth':         'Frame everything in terms of growth — where they are and how to get to the next level.',
+    'direct':         'No softening. State strengths and gaps plainly and move on.',
+  };
+  const VOICE_RULES = `VOICE RULES: No em-dashes. No filler phrases (it's worth noting, importantly, overall, that said). No AI tells (delves into, showcases, robust, testament to, commendable). No comparisons to other students. Short sentences. Plain words. Start with first name only.`;
+  const toneInstructions = (toneMap[tone] || toneMap['plain-warm']) + ' ' + (styleMap[style] || styleMap['balanced']);
   // Parse rubric criteria for dynamic schema
   let rubricCriteria = [];
   try {
@@ -221,7 +242,7 @@ Return ONLY valid JSON, no markdown fences:
   "key_strength":"single most notable strength",
   "key_improvement":"single most important area to improve",
   "weak_areas":["list","of","specific","weak","areas","for","always-on","targeting"],
-  "instructor_paragraph":"A personalized 3-4 sentence paragraph in the instructor's voice. Use ONLY the student's FIRST NAME. Start with the single strongest thing they did — be specific. Name one key gap directly. End with something forward-looking. Plain language, no em-dashes, no AI filler phrases.
+  "instructor_paragraph":"${toneInstructions} ${VOICE_RULES} Write ${sentences} sentences. Use ONLY the student's FIRST NAME. Start with the single strongest thing they did — be specific. Name one key gap directly. End with something forward-looking.
 - No sentence may exceed 18 words. Break long sentences into two.
 - Avoid colons, semicolons, and em dashes. Use periods instead.
 - Write in plain, direct prose."
@@ -426,7 +447,7 @@ async function gradeOne(filePath, assignment, course, skipAlwaysOn=false, origin
   const resp = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
     max_tokens: 2000,
-    system: buildGradePrompt(assignment, course, examples, materials),
+    system: buildGradePrompt(assignment, course, examples, materials, gradeOptions),
     messages: [{ role: 'user', content: gradeMessageContent }]
   });
 
@@ -448,7 +469,8 @@ async function gradeOne(filePath, assignment, course, skipAlwaysOn=false, origin
 // ─── Routes ───────────────────────────────────────────────────────────────
 
 router.post('/batch', upload.any(), async (req, res) => {
-  const { assignmentId, courseId } = req.body;
+  const { assignmentId, courseId, tone, style, sentences } = req.body;
+  const gradeOptions = { tone: tone || 'plain-warm', style: style || 'balanced', sentences: parseInt(sentences) || 4 };
   const files = req.files?.filter(f => f.fieldname === 'files' || f.fieldname.startsWith('file'));
   if (!files?.length) return res.status(400).json({ error: 'No files' });
 

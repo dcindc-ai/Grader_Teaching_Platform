@@ -60,11 +60,14 @@ export const downloadGrades = (courseId, assignmentId, pw) => {
   window.open(`${BASE}/api/grade/download?${q}`, '_blank');
 };
 
-export function gradeBatch(files, assignmentId, courseId, password, onProgress) {
+export function gradeBatch(files, assignmentId, courseId, password, onProgress, gradeOptions = {}) {
   return new Promise((resolve, reject) => {
     const fd = new FormData();
     fd.append('assignmentId', assignmentId);
     fd.append('courseId', courseId);
+    if (gradeOptions.tone) fd.append('tone', gradeOptions.tone);
+    if (gradeOptions.style) fd.append('style', gradeOptions.style);
+    if (gradeOptions.sentences) fd.append('sentences', gradeOptions.sentences);
     files.forEach((f, i) => { fd.append('files', f); fd.append(`name_${i}`, f.name); });
 
     fetch(`${BASE}/api/grade/batch`, {

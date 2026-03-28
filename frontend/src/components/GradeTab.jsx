@@ -18,6 +18,9 @@ export default function GradeTab({ course, password, activeAssignmentId, queue, 
   const [reviewing, setReviewing] = useState(null);
   const [drag, setDrag] = useState(false);
   const fileRef = useRef();
+  const [tone, setTone] = useState('plain-warm');
+  const [style, setStyle] = useState('balanced');
+  const [sentences, setSentences] = useState(4);
 
   useEffect(() => {
     getAssignments(course.id, password).then(a => {
@@ -140,6 +143,36 @@ export default function GradeTab({ course, password, activeAssignmentId, queue, 
 
           {pending.length > 0 && (
             <>
+              {/* Feedback options */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 80px', gap: 6, marginBottom: 8 }}>
+                <div>
+                  <label style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Tone</label>
+                  <select value={tone} onChange={e => setTone(e.target.value)} style={{ width: '100%', fontSize: 12, marginTop: 2 }}>
+                    <option value="plain-warm">Plain + warm</option>
+                    <option value="plain">Plain</option>
+                    <option value="conversational">Conversational</option>
+                    <option value="encouraging">Encouraging</option>
+                    <option value="coach">Coach</option>
+                    <option value="formal">Formal</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Style</label>
+                  <select value={style} onChange={e => setStyle(e.target.value)} style={{ width: '100%', fontSize: 12, marginTop: 2 }}>
+                    <option value="balanced">Balanced</option>
+                    <option value="strength-first">Lead with strength</option>
+                    <option value="gap-first">Lead with gap</option>
+                    <option value="growth">Growth focused</option>
+                    <option value="direct">Direct only</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Sentences</label>
+                  <select value={sentences} onChange={e => setSentences(e.target.value)} style={{ width: '100%', fontSize: 12, marginTop: 2 }}>
+                    {[2,3,4,5,6,7,8].map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </div>
+              </div>
               <button className="primary" style={{ width: '100%', padding: 12, fontSize: 14, fontWeight: 600 }}
                 onClick={runGrading} disabled={grading || !selectedId}>
                 {grading ? `Grading ${progress.done} / ${progress.total}…` : `Grade ${pending.length} submission${pending.length !== 1 ? 's' : ''}`}
@@ -258,6 +291,7 @@ export default function GradeTab({ course, password, activeAssignmentId, queue, 
       {reviewing && (
         <ReviewPanel
           grade={reviewing}
+          assignment={assignment}
           password={password}
           onClose={() => setReviewing(null)}
           onUpdate={updated => {
