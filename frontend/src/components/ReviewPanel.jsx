@@ -170,19 +170,30 @@ export default function ReviewPanel({ grade: initialGrade, assignment, password,
 
   async function annotateAndDownload(force = false) {
     setAnnotating(true);
-    setAnnotateMsg('Sending to Claude for annotation…');
+    setAnnotateMsg('Processing — this takes 30-60 seconds for multi-page PDFs…');
     try {
       const url = `${BASE}/api/annotate/${grade.id}${force ? '?force=true' : ''}`;
-      const r = await fetch(url, { method: 'POST', headers: { 'x-admin-password': password } });
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 180000);
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'x-admin-password': password },
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Annotation failed');
       setAnnotateMsg(d.cached ? 'Opening cached version…' : 'Done! Downloading…');
       window.open(`${BASE}/api/annotate/${grade.id}/download`, '_blank');
     } catch (e) {
-      setAnnotateMsg('Error: ' + e.message);
+      if (e.name === 'AbortError') {
+        setAnnotateMsg('Timed out — check backend terminal for errors');
+      } else {
+        setAnnotateMsg('Error: ' + e.message);
+      }
     }
     setAnnotating(false);
-    setTimeout(() => setAnnotateMsg(''), 4000);
+    setTimeout(() => setAnnotateMsg(''), 6000);
   }
 
   // Load Always-On for this grade if not already present
