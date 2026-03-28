@@ -690,12 +690,16 @@ router.get('/download', async (req, res) => {
   archive.pipe(res);
 
   // CSV
-  const csvRows = ['Student,File,Course,Assignment,Total,Max,Ann.Product,Narrative,Context,Quality,Graded,Strength,Improvement'];
+  const csvRows = ['Student,File,Course,Assignment,Total,Max,Graded,Strength,Improvement'];
   for (const g of grades) {
     const s = g.scores || {};
-    csvRows.push([g.studentName,g.fileName,g.courseId,g.assignmentName,g.total,g.maxScore,
-      s.annotated_product,s.narrative,s.context,s.overall_quality,g.gradedAt,
-      g.key_strength||'',g.key_improvement||''].map(v=>`"${String(v||'').replace(/"/g,'""')}"`).join(','));
+    const cfArray = g.criteriaFeedback || [];
+    const scoreFields = cfArray.length > 0
+      ? cfArray.map(cf => cf.score)
+      : Object.entries(s).filter(([k]) => k !== 'total').map(([, v]) => v);
+    csvRows.push([g.studentName, g.fileName, g.courseId, g.assignmentName, g.total, g.maxScore,
+      g.gradedAt, g.key_strength||'', g.key_improvement||'',
+      ...scoreFields].map(v => `"${String(v||'').replace(/"/g,'""')}"`).join(','));
   }
   archive.append(csvRows.join('\n'), { name: 'grades.csv' });
 
@@ -735,21 +739,34 @@ router.get('/download', async (req, res) => {
       const sc=tc/mx>=0.83?GREEN:tc/mx>=0.6?rgb(0.6,0.4,0):RED;
       page.drawText(`TOTAL: ${grade.total} / ${grade.maxScore}`,{x:M,y,size:16,font:bold,color:sc});y-=20;
       const s=grade.scores||{};
-      // Dynamic criteria from rubric or scores
+      // Dynamic criteria from rubric, criteriaFeedback, or scores
       const rubricCrit = (() => { try { return assignment.rubric_criteria ? JSON.parse(assignment.rubric_criteria) : []; } catch(e) { return []; } })();
-      const scoreLines = rubricCrit.length > 0
-        ? rubricCrit.map(c => `${c.name}: ${s[c.name] || 0}/${c.maxPoints}`)
-        : Object.entries(s).map(([k,v]) => `${k.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())}: ${v}`);
+      const cfArray = grade.criteriaFeedback || [];
+      // Build score lines using criteriaFeedback scores if available (they reflect saved edits)
+      const scoreLines = cfArray.length > 0
+        ? cfArray.map(cf => `${cf.criterionName}: ${cf.score}/${cf.maxPoints}`)
+        : rubricCrit.length > 0
+          ? rubricCrit.map(c => { const key=c.name.toLowerCase().replace(/[^a-z0-9]/g,'_'); return `${c.name}: ${s[key]||s[c.name]||0}/${c.maxPoints}`; })
+          : Object.entries(s).filter(([k])=>k!=='total').map(([k,v]) => `${k.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())}: ${v}`);
       scoreLines.forEach(p=>{chk(LH+2);page.drawText(p,{x:M,y,size:10,font,color:BLACK});y-=LH;});y-=8;
 
       if(grade.summary){sec('Overall Assessment');wrap(grade.summary,{f:italic,color:rgb(0.15,0.15,0.15)});y-=4;}
       if(grade.key_strength){y-=4;chk();page.drawText('+ '+grade.key_strength,{x:M,y,size:10,font,color:GREEN});y-=LH;}
       if(grade.key_improvement){chk();page.drawText('→ '+grade.key_improvement,{x:M,y,size:10,font,color:RED});y-=LH;}
 
-      const KNOWN_LABELS = {annotated_product:'Annotated Product',narrative:'Narrative',context:'Context',overall_quality:'Overall Quality'};
+      // Use criteriaFeedback for per-section content if available, else fall back to comments
+      if(cfArray.length > 0){
+        for(const cf of cfArray){
+          sec(cf.criterionName + (cf.rating ? '  ['+cf.rating+']' : ''));
+          if(cf.strengths){wrap('+ '+cf.strengths,{size:10,color:GREEN});}
+          if(cf.gaps){wrap('↑ '+cf.gaps,{size:10,color:RED});}
+          if(cf.suggestion){wrap('→ '+cf.suggestion,{size:9,color:BLUE,f:italic});}
+          y-=4;
+        }
+      } else {
       const secs = Object.keys(grade.comments || {})
         .filter(k => (grade.comments[k] || []).length > 0)
-        .map(k => [k, KNOWN_LABELS[k] || k.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())]);
+        .map(k => [k, k.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())]);
       for(const[key,label]of secs){
         const comments=grade.comments?.[key]||[];
         if(!comments.length)continue;
@@ -760,6 +777,7 @@ router.get('/download', async (req, res) => {
           if(c.rewrite){y-=2;wrap(c.rewrite.replace(/^Suggested rewrite:\s*/i,'↳ '),{x:M+12,size:9,color:BLUE,f:italic,maxW:CW-12});y-=4;}
         }
       }
+      } // end else (no criteriaFeedback)
 
       // Always-On section
       const ao = db.prepare('SELECT * FROM always_on WHERE grade_id=? AND status=?').get(grade.id, 'approved');
