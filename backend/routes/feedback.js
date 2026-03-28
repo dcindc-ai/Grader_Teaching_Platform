@@ -250,10 +250,52 @@ router.get('/docx/:gradeId', async (req, res) => {
       children.push(new Paragraph({ spacing: { after: 200 } }));
     }
 
-    // Section comments
-    for (const [key, label] of Object.entries(SECTION_LABELS)) {
-      const comments = grade.comments?.[key] || [];
-      if (!comments.length) continue;
+    // Section comments — dynamic, uses actual keys from grade + rubric criteria
+    const gradeComments = grade.comments || {};
+    const gradeScores = grade.scores || {};
+
+    // Build dynamic sections from rubric criteria or fall back to comment keys
+    let rubricCriteriaForComments = [];
+    try { if (assignment.rubric_criteria) rubricCriteriaForComments = JSON.parse(assignment.rubric_criteria); } catch(e) {}
+
+    const sectionKeys = rubricCriteriaForComments.length > 0
+      ? rubricCriteria.map(c => ({
+          key: c.name.toLowerCase().replace(/[^a-z0-9]/g, '_'),
+          label: c.name,
+          max: c.maxPoints
+        }))
+      : Object.keys(gradeComments)
+          .filter(k => !/^\d+$/.test(k))
+          .map(k => ({
+            key: k,
+            label: SECTION_LABELS[k] || k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+            max: SECTION_MAX[k] || 1
+          }));
+
+    // Use criteriaFeedback (rich per-criterion) if available, else fall back to comments
+    const criteriaFeedback = grade.criteriaFeedback || [];
+    const useCriteriaFeedback = criteriaFeedback.length > 0;
+
+    for (const { key, label, max: secMax } of sectionKeys) {
+      // Find matching criteriaFeedback entry
+      const cfEntry = useCriteriaFeedback
+        ? criteriaFeedback.find(cf => cf.criterionName === label || cf.criterionName?.toLowerCase().replace(/[^a-z0-9]/g,'_') === key)
+        : null;
+
+      const score = parseFloat(gradeScores[key] || cfEntry?.score || 0);
+      const pct = secMax > 0 ? score / secMax : 0;
+      const scoreColor = pct >= 0.85 ? GREEN : pct >= 0.6 ? 'D97706' : RED;
+
+      // Build comments from criteriaFeedback or fall back to old comments format
+      const comments = cfEntry
+        ? [
+            cfEntry.strengths && { type: 'positive', text: cfEntry.strengths },
+            cfEntry.gaps && { type: 'negative', text: cfEntry.gaps },
+            cfEntry.suggestion && { type: 'negative', text: '→ ' + cfEntry.suggestion },
+          ].filter(Boolean)
+        : (gradeComments[key] || gradeComments[label] || grade.comments?.[key] || []);
+
+      if (!Array.isArray(comments) || !comments.length) continue;
 
       children.push(new Paragraph({
         border: { bottom: { style: BorderStyle.SINGLE, size: 2, color: 'E5E7EB', space: 1 } },

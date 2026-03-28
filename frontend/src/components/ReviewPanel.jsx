@@ -10,11 +10,30 @@ const SECTION_LABELS = {
 };
 const SECTION_MAX = { annotated_product: 2, narrative: 2, context: 1, overall_quality: 1 };
 
-// Derive display sections from actual keys in the grade record
-function getSections(grade) {
+// Derive display sections from actual keys in the grade record + rubric criteria
+function getSections(grade, assignment) {
   const scores = grade.scores || {};
   const comments = grade.comments || {};
   const isNumeric = k => /^\d+$/.test(k);
+
+  // Try to use rubric criteria for labels and maxes
+  let rubricCriteria = [];
+  try {
+    if (assignment?.rubricCriteria) rubricCriteria = assignment.rubricCriteria;
+  } catch(e) {}
+
+  // Build a map of criterion name → max points
+  const criteriaMaxMap = {};
+  const criteriaLabelMap = {};
+  for (const c of rubricCriteria) {
+    const key = c.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    criteriaMaxMap[key] = c.maxPoints;
+    criteriaLabelMap[key] = c.name;
+    // Also map by exact name (for cases where key matches name)
+    criteriaMaxMap[c.name] = c.maxPoints;
+    criteriaLabelMap[c.name] = c.name;
+  }
+
   const keys = [...new Set([
     ...Object.keys(scores).filter(k => k !== 'total' && !isNumeric(k)),
     ...Object.keys(comments).filter(k => !isNumeric(k))
@@ -23,8 +42,8 @@ function getSections(grade) {
   const count = keys.length;
   return keys.map(key => ({
     key,
-    label: SECTION_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
-    max: SECTION_MAX[key] || (parseFloat(grade.maxScore) / count) || 1
+    label: criteriaLabelMap[key] || SECTION_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+    max: criteriaMaxMap[key] || SECTION_MAX[key] || (parseFloat(grade.maxScore) / count) || 1
   }));
 }
 
@@ -33,7 +52,7 @@ function scoreColor(val, max) {
   return p >= 0.85 ? 'var(--green)' : p >= 0.6 ? 'var(--amber)' : 'var(--red)';
 }
 
-export default function ReviewPanel({ grade: initialGrade, password, onDelete, onClose, onUpdate }) {
+export default function ReviewPanel({ grade: initialGrade, assignment, password, onDelete, onClose, onUpdate }) {
   const [grade, setGrade] = useState(initialGrade);
   const [copied, setCopied] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
@@ -216,7 +235,7 @@ export default function ReviewPanel({ grade: initialGrade, password, onDelete, o
     setTimeout(() => setCopied(false), 2000);
   }
 
-  const sections = getSections(grade);
+  const sections = getSections(grade, assignment);
 
   return (
     <div style={{
@@ -286,25 +305,79 @@ export default function ReviewPanel({ grade: initialGrade, password, onDelete, o
               placeholder="No feedback paragraph yet. Click Regenerate." />
           </div>
 
-          {/* Score breakdown — editable */}
-          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(sections.length, 4)}, 1fr)`, gap: 8, marginBottom: 16 }}>
-            {sections.map(({ key, label, max: mx }) => {
-              const val = parseFloat(s[key]) || 0;
-              return (
-                <div key={key} style={{ padding: '10px 12px', background: 'var(--bg2)', borderRadius: 8, border: '1px solid var(--border)' }}>
-                  <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>{label}</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <input type="number" value={val} min={0} max={mx} step={0.1}
-                      onChange={e => updateScore(key, parseFloat(e.target.value) || 0)}
-                      style={{ width: 62, fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 18,
-                        color: scoreColor(val, mx), border: 'none', background: 'transparent',
-                        outline: 'none', textAlign: 'center', padding: 0 }} />
-                    <span style={{ fontSize: 12, color: 'var(--text2)' }}>/{mx}</span>
+          {/* Per-criterion feedback — Canvas rubric style */}
+          {(grade.criteriaFeedback?.length > 0 ? grade.criteriaFeedback : sections.map(({ key, label, max: mx }) => ({
+            criterionName: label,
+            score: parseFloat(s[key]) || 0,
+            maxPoints: mx,
+            rating: '',
+            strengths: (grade.comments?.[key] || []).filter(c => c.type === 'positive').map(c => c.text).join(' '),
+            gaps: (grade.comments?.[key] || []).filter(c => c.type === 'negative').map(c => c.text).join(' '),
+          }))).map((cf, i) => {
+            const key = cf.criterionName?.toLowerCase().replace(/[^a-z0-9]/g, '_');
+            const score = parseFloat(cf.score ?? s[key]) || 0;
+            const mx = cf.maxPoints || sections.find(s => s.key === key)?.max || 1;
+            const pct = score / mx;
+            const color = pct >= 0.85 ? 'var(--green)' : pct >= 0.6 ? 'var(--amber)' : 'var(--red)';
+            return (
+              <div key={i} style={{ marginBottom: 12, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  padding: '10px 14px', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{cf.criterionName}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {cf.rating && (
+                      <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4,
+                        background: color + '15', color, fontWeight: 600 }}>{cf.rating}</span>
+                    )}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <input type="number" value={score} min={0} max={mx} step={0.5}
+                        onChange={e => {
+                          const val = parseFloat(e.target.value) || 0;
+                          const newScores = { ...s, [key]: val };
+                          const newTotal = Object.entries(newScores).filter(([k]) => k !== 'total').reduce((a, [, v]) => a + (parseFloat(v) || 0), 0);
+                          setGrade(g => ({ ...g, scores: newScores, total: newTotal.toFixed(1),
+                            criteriaFeedback: (g.criteriaFeedback || []).map((f, j) => j === i ? { ...f, score: val } : f) }));
+                          setSaved(false);
+                        }}
+                        style={{ width: 54, fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 16,
+                          color, border: '1px solid var(--border)', borderRadius: 4, textAlign: 'center', padding: '2px 4px' }} />
+                      <span style={{ fontSize: 12, color: 'var(--text3)' }}>/ {mx}</span>
+                    </div>
                   </div>
                 </div>
-              );
-            })}
-          </div>
+                <div style={{ padding: '10px 14px' }}>
+                  {cf.strengths && (
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
+                      <span style={{ fontSize: 11, color: 'var(--green)', fontWeight: 700, flexShrink: 0 }}>+</span>
+                      <textarea value={cf.strengths} rows={2}
+                        onChange={e => setGrade(g => ({ ...g, criteriaFeedback: (g.criteriaFeedback||[]).map((f,j) => j===i ? {...f, strengths: e.target.value} : f) }))}
+                        style={{ flex: 1, fontSize: 12, lineHeight: 1.5, border: 'none', background: 'transparent',
+                          resize: 'vertical', outline: 'none', color: 'var(--text2)', padding: 0 }} />
+                    </div>
+                  )}
+                  {cf.gaps && (
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
+                      <span style={{ fontSize: 11, color: 'var(--red)', fontWeight: 700, flexShrink: 0 }}>↑</span>
+                      <textarea value={cf.gaps} rows={2}
+                        onChange={e => setGrade(g => ({ ...g, criteriaFeedback: (g.criteriaFeedback||[]).map((f,j) => j===i ? {...f, gaps: e.target.value} : f) }))}
+                        style={{ flex: 1, fontSize: 12, lineHeight: 1.5, border: 'none', background: 'transparent',
+                          resize: 'vertical', outline: 'none', color: 'var(--text2)', padding: 0 }} />
+                    </div>
+                  )}
+                  {cf.suggestion && (
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <span style={{ fontSize: 11, color: 'var(--amber)', fontWeight: 700, flexShrink: 0 }}>→</span>
+                      <textarea value={cf.suggestion} rows={1}
+                        onChange={e => setGrade(g => ({ ...g, criteriaFeedback: (g.criteriaFeedback||[]).map((f,j) => j===i ? {...f, suggestion: e.target.value} : f) }))}
+                        style={{ flex: 1, fontSize: 12, lineHeight: 1.5, border: 'none', background: 'transparent',
+                          resize: 'vertical', outline: 'none', color: 'var(--text3)', padding: 0 }} />
+                    </div>
+                  )}
+                </div>
+                <div style={{ height: 3, background: `linear-gradient(to right, ${color} ${Math.round(pct*100)}%, var(--border) 0%)` }} />
+              </div>
+            );
+          })}
 
           {/* Key strength / improvement — editable */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>

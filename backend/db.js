@@ -209,6 +209,7 @@ function parseGrade(r) {
     studentId:r.student_id, studentName:r.student_name, assignmentName:r.assignment_name,
     fileName:r.file_name, total:r.total, maxScore:r.max_score,
     scores:JSON.parse(r.scores||'{}'), comments:JSON.parse(r.comments||'{}'),
+    criteriaFeedback: r.criteria_feedback ? JSON.parse(r.criteria_feedback) : [],
     summary:r.summary, key_strength:r.key_strength, key_improvement:r.key_improvement,
     instructor_paragraph:r.instructor_paragraph,
     resources: r.resources ? JSON.parse(r.resources) : [],
