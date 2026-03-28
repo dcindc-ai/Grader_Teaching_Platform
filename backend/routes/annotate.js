@@ -25,6 +25,15 @@ const { db, parseGrade } = require('../db');
 
 const execFileAsync = promisify(execFile);
 
+// On Windows python3 may not exist — fall back to python
+const PYTHON = (() => {
+  const { execSync } = require('child_process');
+  try { execSync('python3 --version', { stdio: 'ignore' }); return 'python3'; } catch(e) {}
+  try { execSync('python --version', { stdio: 'ignore' }); return 'python'; } catch(e) {}
+  return 'python3'; // fallback, will error with a clear message
+})();
+console.log('[annotate] Using Python command:', PYTHON);
+
 const SCRIPTS_DIR = path.join(__dirname, '../scripts');
 const UPLOADS_DIR = path.join(__dirname, '../uploads');
 const ANNOTATED_DIR = path.join(UPLOADS_DIR, 'annotated');
@@ -43,7 +52,7 @@ async function normalizeSubmission(inputPath, gradeId) {
 
   if (fs.existsSync(normalizedPath)) return normalizedPath; // already done
 
-  await execFileAsync('python3', [
+  await execFileAsync(PYTHON, [
     path.join(SCRIPTS_DIR, 'normalize_to_pdf.py'),
     inputPath,
     normalizedPath,
@@ -75,7 +84,7 @@ print(json.dumps(pages))
   fs.writeFileSync(tmpScript, script);
 
   try {
-    const { stdout } = await execFileAsync('python3', [tmpScript, pdfPath], {
+    const { stdout } = await execFileAsync(PYTHON, [tmpScript, pdfPath], {
       maxBuffer: 50 * 1024 * 1024, // 50MB — pages can be large
       timeout: 60000,
     });
@@ -177,7 +186,7 @@ async function applyAnnotations(normalizedPdfPath, annotations, outputPath) {
   fs.writeFileSync(tmpJson, annJson);
 
   try {
-    await execFileAsync('python3', [
+    await execFileAsync(PYTHON, [
       path.join(SCRIPTS_DIR, 'annotate_pdf.py'),
       normalizedPdfPath,
       tmpJson,
@@ -193,6 +202,7 @@ async function applyAnnotations(normalizedPdfPath, annotations, outputPath) {
 // POST /api/annotate/:gradeId — generate and store annotated PDF
 router.post('/:gradeId', async (req, res) => {
   const { gradeId } = req.params;
+  try {
 
   const gradeRow = db.prepare('SELECT * FROM grades WHERE id=?').get(gradeId);
   if (!gradeRow) return res.status(404).json({ error: 'Grade not found' });
@@ -240,6 +250,10 @@ router.post('/:gradeId', async (req, res) => {
   } catch (err) {
     console.error(`Annotate error [${gradeId}]:`, err.message);
     res.status(500).json({ error: err.message });
+  }
+  } catch(outerErr) {
+    console.error(`[annotate] Unhandled error for ${gradeId}:`, outerErr.message);
+    if (!res.headersSent) res.status(500).json({ error: outerErr.message });
   }
 });
 
