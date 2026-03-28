@@ -248,9 +248,9 @@ Return ONLY valid JSON, no markdown fences:
     "score": 0,
     "maxPoints": ${c.maxPoints},
     "rating": "Accomplished|Proficient|Needs Improvement|Unacceptable",
-    "strengths": "1-2 sentences referencing specific things the student wrote or did well in this section",
-    "gaps": "1-2 sentences naming exactly what is missing or weak — reference specific words or sections",
-    "suggestion": "1 concrete sentence on what would make this section stronger — optional if perfect"
+    "strengths": "1-2 sentences addressed directly to the student (use 'you/your' or their first name once). Reference specific things they wrote or did well in this section.",
+    "gaps": "1-2 sentences addressed directly to the student. Name exactly what is missing or weak — reference their specific words or sections.",
+    "suggestion": "1 concrete sentence addressed to the student telling them what to do differently. Optional if perfect."
   }`).join(',') : ''}],
   "comments": {${rubricCriteria.length > 0 ? rubricCriteria.map(c => `"${c.name.toLowerCase().replace(/[^a-z0-9]/g,'_')}":[{"type":"positive","text":"..."},{"type":"negative","text":"...","rewrite":null}]`).join(',') : '"general":[{"type":"positive","text":"..."}]'}},
   "summary":"2-3 sentence overall assessment",
@@ -468,6 +468,17 @@ async function gradeOne(filePath, assignment, course, skipAlwaysOn=false, origin
 
   const text = resp.content.find(b => b.type === 'text')?.text || '{}';
   const gradeResult = JSON.parse(text.replace(/```json\n?|```/g, '').trim());
+
+  // Post-process: replace "the student" with "you" in per-criterion feedback
+  if (gradeResult.criteriaFeedback) {
+    const firstName = (gradeResult.studentName || '').split(' ')[0] || '';
+    gradeResult.criteriaFeedback = gradeResult.criteriaFeedback.map(cf => ({
+      ...cf,
+      strengths: (cf.strengths || '').replace(/\bthe student\b/gi, 'you').replace(/\bthe student's\b/gi, 'your'),
+      gaps: (cf.gaps || '').replace(/\bthe student\b/gi, 'you').replace(/\bthe student's\b/gi, 'your'),
+      suggestion: (cf.suggestion || '').replace(/\bthe student\b/gi, 'you').replace(/\bthe student's\b/gi, 'your'),
+    }));
+  }
 
   // Generate Always-On (skipped in batch mode to save tokens)
   if (skipAlwaysOn) return { gradeResult };
