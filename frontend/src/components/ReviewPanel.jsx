@@ -350,18 +350,18 @@ export default function ReviewPanel({ grade: initialGrade, assignment, password,
                         background: color + '15', color, fontWeight: 600 }}>{cf.rating}</span>
                     )}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <input type="number" value={score} min={0} max={mx} step={0.5}
+                      <input type="number" value={score} min={0} max={mx} step={0.1}
                         onChange={e => {
-                          const val = parseFloat(e.target.value) || 0;
+                          const val = Math.round(parseFloat(e.target.value) * 10) / 10 || 0;
                           const newScores = { ...s, [key]: val };
                           const newTotal = Object.entries(newScores).filter(([k]) => k !== 'total').reduce((a, [, v]) => a + (parseFloat(v) || 0), 0);
                           setGrade(g => ({ ...g, scores: newScores, total: newTotal.toFixed(1),
                             criteriaFeedback: (g.criteriaFeedback || []).map((f, j) => j === i ? { ...f, score: val } : f) }));
                           setSaved(false);
                         }}
-                        style={{ width: 54, fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 16,
-                          color, border: '1px solid var(--border)', borderRadius: 4, textAlign: 'center', padding: '2px 4px' }} />
-                      <span style={{ fontSize: 12, color: 'var(--text3)' }}>/ {mx}</span>
+                        style={{ width: 72, fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 20,
+                          color, border: '2px solid ' + color, borderRadius: 6, textAlign: 'center', padding: '4px 6px' }} />
+                      <span style={{ fontSize: 13, color: 'var(--text3)' }}>/ {mx}</span>
                     </div>
                   </div>
                 </div>
