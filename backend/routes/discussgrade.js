@@ -309,13 +309,28 @@ Return ONLY valid JSON, no markdown fences:
                 return na - nb;
               });
 
+            // Get speaker notes files
+            const notesFiles = Object.keys(zip.files)
+              .filter(n => /^ppt\/notesSlides\/notesSlide\d+\.xml$/.test(n))
+              .sort((a, b) => parseInt(a.match(/\d+/)?.[0]||0) - parseInt(b.match(/\d+/)?.[0]||0));
+
             let pptText = '';
-            for (const slideFile of slideFiles) {
-              const xml = await zip.files[slideFile].async('string');
-              const texts = xml.match(/<a:t[^>]*>([^<]+)<\/a:t>/g) || [];
-              const slideText = texts.map(t => t.replace(/<[^>]+>/g, '')).join(' ').trim();
-              if (slideText) pptText += `[Slide ${slideFiles.indexOf(slideFile)+1}]: ${slideText}
-`;
+            for (let idx = 0; idx < slideFiles.length; idx++) {
+              const xml = await zip.files[slideFiles[idx]].async('string');
+              const slideText = (xml.match(/<a:t[^>]*>([^<]+)<\/a:t>/g) || [])
+                .map(t => t.replace(/<[^>]+>/g, '')).join(' ').trim();
+              let notesText = '';
+              if (notesFiles[idx]) {
+                const notesXml = await zip.files[notesFiles[idx]].async('string');
+                notesText = (notesXml.match(/<a:t[^>]*>([^<]+)<\/a:t>/g) || [])
+                  .map(t => t.replace(/<[^>]+>/g, '')).join(' ').trim();
+              }
+              if (slideText || notesText) {
+                pptText += `[Slide ${idx+1}]`;
+                if (slideText) pptText += `: ${slideText}`;
+                if (notesText) pptText += `\n  [Speaker Notes]: ${notesText}`;
+                pptText += '\n';
+              }
             }
             if (pptText) {
               parts.push({ type: 'text', text: 'ATTACHED POWERPOINT (' + file.name + '):\n' + pptText });

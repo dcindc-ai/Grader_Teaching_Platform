@@ -425,11 +425,24 @@ async function gradeOne(filePath, assignment, course, skipAlwaysOn=false, origin
       const slideFiles = Object.keys(zip.files)
         .filter(n => /^ppt\/slides\/slide\d+\.xml$/.test(n))
         .sort((a,b) => parseInt(a.match(/\d+/)?.[0]||0) - parseInt(b.match(/\d+/)?.[0]||0));
+      const notesFilesPptx = Object.keys(zip.files)
+        .filter(n => /^ppt\/notesSlides\/notesSlide\d+\.xml$/.test(n))
+        .sort((a,b) => parseInt(a.match(/\d+/)?.[0]||0) - parseInt(b.match(/\d+/)?.[0]||0));
       let pptText = '';
-      for (const sf of slideFiles) {
-        const xml = await zip.files[sf].async('string');
-        const texts = (xml.match(/<a:t[^>]*>([^<]+)<\/a:t>/g)||[]).map(t=>t.replace(/<[^>]+>/g,'')).join(' ').trim();
-        if (texts) pptText += `[Slide ${slideFiles.indexOf(sf)+1}]: ${texts}\n`;
+      for (let idx = 0; idx < slideFiles.length; idx++) {
+        const xml = await zip.files[slideFiles[idx]].async('string');
+        const slideText = (xml.match(/<a:t[^>]*>([^<]+)<\/a:t>/g)||[]).map(t=>t.replace(/<[^>]+>/g,'')).join(' ').trim();
+        let notesText = '';
+        if (notesFilesPptx[idx]) {
+          const notesXml = await zip.files[notesFilesPptx[idx]].async('string');
+          notesText = (notesXml.match(/<a:t[^>]*>([^<]+)<\/a:t>/g)||[]).map(t=>t.replace(/<[^>]+>/g,'')).join(' ').trim();
+        }
+        if (slideText || notesText) {
+          pptText += `[Slide ${idx+1}]`;
+          if (slideText) pptText += `: ${slideText}`;
+          if (notesText) pptText += `\n  [Speaker Notes]: ${notesText}`;
+          pptText += '\n';
+        }
       }
       const mediaFiles = Object.keys(zip.files).filter(n => n.startsWith('ppt/media/') && /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(n));
       gradeMessageContent = [];
