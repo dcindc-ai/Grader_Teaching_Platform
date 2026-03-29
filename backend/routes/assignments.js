@@ -68,6 +68,56 @@ router.post('/:id/examples', (req, res) => {
   res.json(db.prepare('SELECT * FROM examples WHERE id=?').get(id));
 });
 
+// POST /api/assignments/:id/examples/import — bulk import JSONL calibration pack
+router.post('/:id/examples/import', (req, res) => {
+  const { jsonl, courseId } = req.body;
+  if (!jsonl) return res.status(400).json({ error: 'jsonl required' });
+
+  const lines = jsonl.trim().split('\n').filter(l => l.trim());
+  let imported = 0, errors = 0;
+
+  for (const line of lines) {
+    try {
+      const rec = JSON.parse(line);
+
+      // Map JSONL fields to examples table
+      const studentName = rec.student || 'Unknown';
+      const score = rec.score_summary?.total_points || 0;
+      const maxPts = rec.score_summary?.max_points || 75;
+      const overallRating = rec.score_summary?.overall_rating || '';
+
+      // Determine quality from calibration_note or overall_rating
+      const note = (rec.calibration_note || '').toLowerCase();
+      const rating = overallRating.toLowerCase();
+      let quality = 'good';
+      if (note.includes('low') || rating.includes('needs improvement') || score / maxPts < 0.75) quality = 'weak';
+      else if (note.includes('borderline')) quality = 'borderline';
+
+      // Build content from criteria feedback
+      const criteriaText = (rec.criteria || []).map(c =>
+        `[${c.criterion}] ${c.rating} (${c.points}/${c.max_points}): ${c.comment}`
+      ).join('\n');
+
+      const content = [
+        rec.overall_feedback || '',
+        criteriaText ? '\nCRITERIA:\n' + criteriaText : '',
+        rec.calibration_note ? '\nCALIBRATION NOTE: ' + rec.calibration_note : ''
+      ].filter(Boolean).join('\n');
+
+      const notes = `${overallRating} — ${rec.calibration_note || ''}`;
+
+      db.prepare('INSERT OR REPLACE INTO examples (id,assignment_id,course_id,student_name,score,quality,notes,content) VALUES (?,?,?,?,?,?,?,?)')
+        .run(uuidv4(), req.params.id, courseId || '', studentName, score, quality, notes, content);
+      imported++;
+    } catch(e) {
+      console.warn('[import] Failed to parse line:', e.message);
+      errors++;
+    }
+  }
+
+  res.json({ imported, errors, total: lines.length });
+});
+
 router.delete('/:id/examples/:exId', (req, res) => {
   db.prepare('DELETE FROM examples WHERE id=?').run(req.params.exId);
   res.json({ ok: true });

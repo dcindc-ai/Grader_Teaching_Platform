@@ -19,6 +19,7 @@ export default function AssignmentsTab({ course, password }) {
   const [importingCanvas, setImportingCanvas] = useState(false);
   const pdfRef = useRef();
   const csvRef = useRef();
+  const jsonlRef = useRef();
   const [importingCsv, setImportingCsv] = useState(false);
 
   async function handleImportFromCanvas() {
@@ -442,7 +443,29 @@ export default function AssignmentsTab({ course, password }) {
           {/* Calibration examples */}
           <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10 }}>
             <div style={{ fontWeight:600 }}>Calibration Examples <span className="badge">{examples.length}</span></div>
-            <button style={{ fontSize:12 }} onClick={() => setShowAddEx(!showAddEx)}>{showAddEx?'Cancel':'+ Add example'}</button>
+            <div style={{ display:'flex', gap:6 }}>
+              <input ref={jsonlRef} type="file" accept=".jsonl,.json" style={{ display:'none' }}
+                onChange={async e => {
+                  const f = e.target.files[0];
+                  if (!f) return;
+                  const text = await f.text();
+                  try {
+                    const r = await fetch(`${BASE}/api/assignments/${selected.id}/examples/import`, {
+                      method: 'POST',
+                      headers: { 'x-admin-password': password, 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ jsonl: text, courseId: course.id })
+                    });
+                    const d = await r.json();
+                    if (!r.ok) throw new Error(d.error);
+                    const updated = await fetch(`${BASE}/api/assignments/${selected.id}/examples`, { headers: { 'x-admin-password': password } });
+                    setExamples(await updated.json());
+                    alert(`✓ Imported ${d.imported} calibration examples`);
+                  } catch(e) { alert('Import error: ' + e.message); }
+                  e.target.value = '';
+                }} />
+              <button style={{ fontSize:12 }} onClick={() => jsonlRef.current.click()}>📥 Import JSONL</button>
+              <button style={{ fontSize:12 }} onClick={() => setShowAddEx(!showAddEx)}>{showAddEx?'Cancel':'+ Add example'}</button>
+            </div>
           </div>
 
           {showAddEx && (
