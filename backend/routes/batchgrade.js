@@ -105,19 +105,24 @@ router.post('/start', async (req, res) => {
 
     // Create pending batch grade records
     const students = Object.values(studentSubmissions);
-    let created = 0;
+    let created = 0, updated = 0;
     for (const s of students) {
-      const existing = db.prepare('SELECT id FROM batch_grades WHERE assignment_id=? AND canvas_user_id=?')
+      const existing = db.prepare('SELECT id, status FROM batch_grades WHERE assignment_id=? AND canvas_user_id=?')
         .get(assignmentId, s.userId);
       if (!existing) {
         db.prepare(`INSERT INTO batch_grades (id,course_id,assignment_id,student_name,canvas_user_id,status,submission_text)
           VALUES (?,?,?,?,?,?,?)`)
           .run(uuidv4(), courseId, assignmentId, s.name, s.userId, 'pending', s.texts.join('\n\n'));
         created++;
+      } else if (existing.status === 'error') {
+        // Reset errored records so they can be regraded
+        db.prepare('UPDATE batch_grades SET status=?, submission_text=?, error=NULL WHERE id=?')
+          .run('pending', s.texts.join('\n\n'), existing.id);
+        updated++;
       }
     }
 
-    res.json({ created, total: students.length, message: `${created} new submissions queued for grading` });
+    res.json({ created, updated, total: students.length, message: `${created} new, ${updated} reset from error — ${students.length} total` });
   } catch(e) {
     res.status(500).json({ error: e.message });
   }
@@ -275,6 +280,14 @@ router.get('/pending-for-student', (req, res) => {
 router.delete('/:id', (req, res) => {
   db.prepare('DELETE FROM batch_grades WHERE id=?').run(req.params.id);
   res.json({ ok: true });
+});
+
+// POST /api/batchgrade/:id/reset — reset a graded/errored record back to pending
+router.post('/:id/reset', (req, res) => {
+  db.prepare('UPDATE batch_grades SET status=?, grade_json=NULL, error=NULL WHERE id=?')
+    .run('pending', req.params.id);
+  const record = db.prepare('SELECT * FROM batch_grades WHERE id=?').get(req.params.id);
+  res.json(record || { ok: true });
 });
 
 module.exports = router;

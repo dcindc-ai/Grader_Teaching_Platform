@@ -284,6 +284,16 @@ export default function BatchGradeTab({ course, password }) {
                 {selected.status === 'approved' && (
                   <button onClick={() => gradeOne(selected)} style={{ fontSize: 12, padding: '6px 12px' }}>↻ Regrade</button>
                 )}
+                {(selected.status === 'error' || selected.status === 'graded') && (
+                  <button onClick={async () => {
+                    const r = await fetch(`${BASE}/api/batchgrade/${selected.id}/reset`, { method: 'POST' });
+                    const updated = await r.json();
+                    setRecords(rs => rs.map(x => x.id === selected.id ? { ...x, status: 'pending', grade_json: null, error: null } : x));
+                    setSelected(s => ({ ...s, status: 'pending', grade_json: null, error: null }));
+                  }} style={{ fontSize: 11, padding: '6px 10px', color: 'var(--amber)', border: '1px solid var(--amber)', background: 'transparent', borderRadius: 6, cursor: 'pointer' }}>
+                    ↺ Reset
+                  </button>
+                )}
                 <button onClick={() => deleteRecord(selected.id)}
                   style={{ fontSize: 11, padding: '6px 10px', color: 'var(--red)', border: '1px solid var(--red)', background: 'transparent', borderRadius: 6, cursor: 'pointer' }}>
                   🗑
