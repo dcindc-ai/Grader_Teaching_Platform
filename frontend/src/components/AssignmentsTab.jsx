@@ -325,8 +325,43 @@ export default function AssignmentsTab({ course, password }) {
               </div>
               <div className="field">
                 <label>Canvas Assignment ID <span style={{ fontWeight:400, color:'var(--text3)', fontSize:11 }}>— from Canvas assignment URL, e.g. /assignments/665907</span></label>
-                <input type="text" value={form.canvasAssignmentId||''} onChange={e => setForm(f=>({...f,canvasAssignmentId:e.target.value}))}
-                  placeholder="e.g. 665907" style={{ fontSize:12, fontFamily:'var(--mono)' }} />
+                <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+                  <input type="text" value={form.canvasAssignmentId||''} onChange={e => setForm(f=>({...f,canvasAssignmentId:e.target.value}))}
+                    onBlur={async e => {
+                      const id = e.target.value.trim();
+                      if (!id || !course.canvasToken || id === selected?.canvasAssignmentId) return;
+                      setImportingCanvas(true);
+                      try {
+                        // Save the ID first so the backend can find it
+                        const tempAssignment = { ...selected, canvasAssignmentId: id };
+                        const r = await fetch(`${BASE}/api/canvasimport/assignment`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ courseId: course.id, assignmentId: selected.id, overrideCanvasId: id })
+                        });
+                        const data = await r.json();
+                        if (!r.ok) throw new Error(data.error || 'Import failed');
+                        setForm(f => ({
+                          ...f,
+                          description: data.description || f.description,
+                          rubric: data.rubricText || f.rubric,
+                          rubricCriteria: data.rubricCriteria || f.rubricCriteria,
+                          maxScore: data.maxScore || f.maxScore,
+                          name: f.name || data.name,
+                        }));
+                        const msg = data.rubricCriteria
+                          ? `✓ Auto-fetched from Canvas: ${data.rubricCriteria.length} rubric criteria + description`
+                          : `✓ Fetched description from Canvas (no rubric attached to assignment)`;
+                        alert(msg);
+                      } catch(e) {
+                        // Silent fail — user can still click Import manually
+                        console.warn('Auto-fetch failed:', e.message);
+                      }
+                      setImportingCanvas(false);
+                    }}
+                    placeholder="e.g. 665907" style={{ fontSize:12, fontFamily:'var(--mono)', flex:1 }} />
+                  {importingCanvas && <span style={{ fontSize:11, color:'var(--text3)' }}>Fetching from Canvas…</span>}
+                </div>
               </div>
               <div className="field">
                 <label>DO NOT PENALIZE <span style={{ fontWeight:400, color:'var(--red)', fontSize:11 }}>— Claude will follow these as hard rules overriding the rubric</span></label>

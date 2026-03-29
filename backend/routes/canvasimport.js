@@ -5,7 +5,7 @@ const { db, parseCourse, parseAssignment } = require('../db');
 // POST /api/canvasimport/assignment
 // Fetches rubric + description from Canvas for a given assignment
 router.post('/assignment', async (req, res) => {
-  const { courseId, assignmentId } = req.body;
+  const { courseId, assignmentId, overrideCanvasId } = req.body;
   if (!courseId || !assignmentId) return res.status(400).json({ error: 'courseId and assignmentId required' });
 
   const course = db.prepare('SELECT * FROM courses WHERE id=?').get(courseId);
@@ -14,7 +14,7 @@ router.post('/assignment', async (req, res) => {
 
   const canvasUrl = (course.canvas_url || '').replace(/\/$/, '');
   const canvasToken = course.canvas_token;
-  const canvasAssignmentId = assignment.canvas_assignment_id;
+  const canvasAssignmentId = overrideCanvasId || assignment.canvas_assignment_id;
 
   if (!canvasUrl || !canvasToken) return res.status(400).json({ error: 'Canvas URL and token not set in Course Settings' });
   if (!canvasAssignmentId) return res.status(400).json({ error: 'Canvas Assignment ID not set on this assignment' });
