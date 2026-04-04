@@ -125,6 +125,9 @@ export default function CourseSettingsTab({ course, password, onUpdate, onDelete
               <option value="formal">Formal academic</option>
               <option value="encouraging">Encouraging</option>
               <option value="socratic">Socratic</option>
+              <option value="dave">Dave Cook Voice</option>
+              <option value="dave-plain">Dave + Direct</option>
+              <option value="dave-warm">Dave + Warm</option>
             </select>
           </div>
           <div>

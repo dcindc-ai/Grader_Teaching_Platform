@@ -516,6 +516,9 @@ export default function DiscussGrader({ course, password, assignments, question,
                       <option value="formal">Formal academic</option>
                       <option value="encouraging">Encouraging</option>
                       <option value="socratic">Socratic — ask questions</option>
+                      <option value="dave">Dave Cook Voice</option>
+                      <option value="dave-plain">Dave + Direct</option>
+                      <option value="dave-warm">Dave + Warm</option>
                     </select>
                   </div>
                   <div>
