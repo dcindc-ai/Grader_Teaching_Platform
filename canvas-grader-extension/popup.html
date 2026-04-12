@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Canvas Grader</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>Canvas Grader</h1>
+      <span id="mode-badge">detecting...</span>
+    </header>
+
+    <!-- Settings row (shared) -->
+    <div class="settings-row">
+      <label>
+        Tone
+        <select id="tone">
+          <option value="plain-warm">Plain Warm</option>
+          <option value="plain">Plain</option>
+          <option value="conversational">Conversational</option>
+          <option value="encouraging">Encouraging</option>
+          <option value="coach">Coach</option>
+          <option value="formal">Formal</option>
+          <option value="dave">Dave Cook</option>
+          <option value="dave-plain">Dave Cook (Plain)</option>
+          <option value="dave-warm">Dave Cook (Warm)</option>
+        </select>
+      </label>
+      <label>
+        Backend
+        <input id="backend-url" type="text" placeholder="http://localhost:3001" />
+      </label>
+    </div>
+
+    <!-- Standard assignment mode -->
+    <div id="standard-mode" class="mode-panel" style="display:none">
+      <p class="mode-desc">Standard assignment detected. Paste or auto-detect submission text below.</p>
+      <textarea id="submission-text" placeholder="Student submission text..." rows="6"></textarea>
+      <textarea id="assignment-desc" placeholder="Assignment description / rubric..." rows="3"></textarea>
+      <button id="grade-standard-btn" class="btn primary">Grade Submission</button>
+      <div id="standard-result" class="result-area" style="display:none"></div>
+    </div>
+
+    <!-- Quiz mode -->
+    <div id="quiz-mode" class="mode-panel" style="display:none">
+      <p class="mode-desc">Quiz detected. Essay questions found:</p>
+      <div id="quiz-questions"></div>
+      <button id="grade-all-btn" class="btn primary" style="display:none">Grade All Ungraded</button>
+      <p id="quiz-empty" style="display:none">No ungraded essay questions found.</p>
+    </div>
+
+    <!-- No page -->
+    <div id="no-page" class="mode-panel" style="display:none">
+      <p>Open Canvas SpeedGrader to get started.</p>
+    </div>
+
+    <div id="status-bar"></div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

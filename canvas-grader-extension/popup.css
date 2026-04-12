@@ -1,0 +1,195 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  width: 420px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+  color: #1a1a1a;
+  background: #fafafa;
+}
+
+#app { padding: 12px; }
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+header h1 { font-size: 15px; font-weight: 600; }
+
+#mode-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #e0e0e0;
+  color: #555;
+  font-weight: 500;
+}
+#mode-badge.quiz { background: #e8f5e9; color: #2e7d32; }
+#mode-badge.standard { background: #e3f2fd; color: #1565c0; }
+
+.settings-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.settings-row label {
+  display: flex;
+  flex-direction: column;
+  font-size: 11px;
+  color: #666;
+  flex: 1;
+}
+.settings-row select,
+.settings-row input {
+  margin-top: 3px;
+  padding: 5px 6px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.mode-desc {
+  color: #555;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+textarea {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 12px;
+  resize: vertical;
+  margin-bottom: 6px;
+  font-family: inherit;
+}
+
+.btn {
+  padding: 7px 14px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+}
+.btn.primary {
+  background: #1565c0;
+  color: #fff;
+}
+.btn.primary:hover { background: #0d47a1; }
+.btn.primary:disabled { background: #90caf9; cursor: default; }
+
+.btn.small {
+  padding: 4px 10px;
+  font-size: 11px;
+}
+.btn.approve {
+  background: #2e7d32;
+  color: #fff;
+}
+.btn.approve:hover { background: #1b5e20; }
+
+/* Quiz question cards */
+.quiz-question {
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 10px;
+  margin-bottom: 8px;
+}
+.quiz-question.graded-card { border-left: 3px solid #2e7d32; }
+
+.qq-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 6px;
+}
+.qq-title {
+  font-weight: 600;
+  font-size: 12px;
+  flex: 1;
+  margin-right: 8px;
+}
+.qq-points {
+  font-size: 11px;
+  color: #666;
+  white-space: nowrap;
+}
+
+.qq-response {
+  font-size: 12px;
+  color: #333;
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.25s ease;
+  margin-bottom: 4px;
+}
+.qq-response.expanded { max-height: 600px; overflow-y: auto; }
+
+.qq-toggle {
+  font-size: 11px;
+  color: #1565c0;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  margin-bottom: 6px;
+}
+.qq-toggle:hover { text-decoration: underline; }
+
+.qq-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.qq-result {
+  margin-top: 8px;
+  padding: 8px;
+  background: #f5f5f5;
+  border-radius: 4px;
+  font-size: 12px;
+}
+.qq-result .score-line {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.qq-result .feedback-line {
+  color: #444;
+  line-height: 1.4;
+}
+
+.result-area {
+  margin-top: 8px;
+  padding: 10px;
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+#status-bar {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #888;
+  min-height: 16px;
+}
+#status-bar.error { color: #c62828; }
+
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #ccc;
+  border-top-color: #1565c0;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  vertical-align: middle;
+  margin-right: 4px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }

@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Canvas SpeedGrader Assistant",
+  "version": "1.0.0",
+  "description": "AI-powered grading assistant for Canvas SpeedGrader — supports standard assignments and quiz essays.",
+  "permissions": ["activeTab", "storage"],
+  "host_permissions": ["https://*.instructure.com/*"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": "icon48.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://*.instructure.com/courses/*/gradebook/speed_grader*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
+}
