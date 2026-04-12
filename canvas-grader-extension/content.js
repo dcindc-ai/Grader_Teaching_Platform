@@ -8,19 +8,46 @@
   if (window.__canvasGraderInjected) return;
   window.__canvasGraderInjected = true;
 
-  // ─── Quiz detection ───────────────────────────────────────────────────
+  // ─── Quiz detection (API-based) ────────────────────────────────────────
 
-  function isQuizPage() {
-    return !!(
-      document.querySelector('.quiz-submission') ||
-      document.querySelector('#quiz-submission-version-table') ||
-      document.querySelector('.quiz_score') ||
-      document.querySelector('.quiz-header') ||
-      document.querySelector('#questions.question_list') ||
-      document.querySelector('.question_holder') ||
-      // Quiz.Next / New Quizzes in iframe
-      document.querySelector('iframe[src*="quizzes"]')
-    );
+  // Parse assignmentId from the SpeedGrader URL query string
+  function getCanvasAssignmentId() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('assignment_id') || '';
+  }
+
+  // Backend URL — read from storage or default
+  const BACKEND_URL = 'http://localhost:3001';
+
+  // Call the platform backend to check if this Canvas assignment is a quiz
+  async function isQuizPage() {
+    const canvasAssignmentId = getCanvasAssignmentId();
+    if (!canvasAssignmentId) return false;
+
+    try {
+      const resp = await fetch(
+        `${BACKEND_URL}/api/assignments?canvas_assignment_id=${encodeURIComponent(canvasAssignmentId)}`
+      );
+      if (!resp.ok) return false;
+
+      const assignments = await resp.json();
+      if (!assignments || assignments.length === 0) return false;
+
+      const assignment = assignments[0];
+      // Check if the assignment type indicates a quiz
+      const quizTypes = ['quiz', 'quiz_essay', 'online_quiz'];
+      if (quizTypes.includes((assignment.type || '').toLowerCase())) return true;
+
+      // Also check if the name or description suggests it's a quiz
+      const nameLC = (assignment.name || '').toLowerCase();
+      if (nameLC.includes('quiz') || nameLC.includes('exam')) return true;
+
+      return false;
+    } catch (e) {
+      // Network error or backend down — fall back to standard mode
+      console.log('[CanvasGrader] Quiz detection API failed, defaulting to standard mode:', e.message);
+      return false;
+    }
   }
 
   // ─── Essay question scraping ──────────────────────────────────────────
@@ -199,9 +226,8 @@
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     switch (msg.type) {
       case 'DETECT_MODE': {
-        const quiz = isQuizPage();
-        sendResponse({ quiz });
-        break;
+        isQuizPage().then(quiz => sendResponse({ quiz }));
+        return true; // keep channel open for async response
       }
 
       case 'SCRAPE_QUIZ': {

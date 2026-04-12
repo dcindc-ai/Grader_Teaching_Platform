@@ -4,7 +4,14 @@ const { db, parseAssignment } = require('../db');
 const router = express.Router();
 
 router.get('/', (req, res) => {
-  const { courseId } = req.query;
+  const { courseId, canvas_assignment_id } = req.query;
+
+  // Lookup by Canvas assignment ID (used by Chrome extension for quiz detection)
+  if (canvas_assignment_id) {
+    const rows = db.prepare('SELECT * FROM assignments WHERE canvas_assignment_id=? ORDER BY display_order ASC').all(canvas_assignment_id);
+    return res.json(rows.map(parseAssignment));
+  }
+
   const rows = courseId
     ? db.prepare('SELECT * FROM assignments WHERE course_id=? ORDER BY display_order ASC').all(courseId)
     : db.prepare('SELECT * FROM assignments ORDER BY display_order ASC').all();
