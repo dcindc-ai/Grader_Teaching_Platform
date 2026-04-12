@@ -22,26 +22,49 @@
   // Call the platform backend to check if this Canvas assignment is a quiz
   async function isQuizPage() {
     const canvasAssignmentId = getCanvasAssignmentId();
-    if (!canvasAssignmentId) return false;
+    console.log('[CanvasGrader] assignment_id from URL:', canvasAssignmentId || '(none)');
+
+    if (!canvasAssignmentId) {
+      console.log('[CanvasGrader] No assignment_id in URL — standard mode');
+      return false;
+    }
 
     try {
-      const resp = await fetch(
-        `${BACKEND_URL}/api/assignments?canvas_assignment_id=${encodeURIComponent(canvasAssignmentId)}`
-      );
-      if (!resp.ok) return false;
+      const url = `${BACKEND_URL}/api/assignments?canvas_assignment_id=${encodeURIComponent(canvasAssignmentId)}`;
+      console.log('[CanvasGrader] Calling backend:', url);
+      const resp = await fetch(url);
+
+      if (!resp.ok) {
+        console.log('[CanvasGrader] Backend returned HTTP', resp.status, '— standard mode');
+        return false;
+      }
 
       const assignments = await resp.json();
-      if (!assignments || assignments.length === 0) return false;
+      console.log('[CanvasGrader] Backend response:', JSON.stringify(assignments));
+
+      if (!assignments || assignments.length === 0) {
+        console.log('[CanvasGrader] No matching assignment found — standard mode');
+        return false;
+      }
 
       const assignment = assignments[0];
+      console.log('[CanvasGrader] Matched assignment:', assignment.name, '| type:', assignment.type);
+
       // Check if the assignment type indicates a quiz
       const quizTypes = ['quiz', 'quiz_essay', 'online_quiz'];
-      if (quizTypes.includes((assignment.type || '').toLowerCase())) return true;
+      if (quizTypes.includes((assignment.type || '').toLowerCase())) {
+        console.log('[CanvasGrader] Quiz type detected — QUIZ MODE');
+        return true;
+      }
 
       // Also check if the name or description suggests it's a quiz
       const nameLC = (assignment.name || '').toLowerCase();
-      if (nameLC.includes('quiz') || nameLC.includes('exam')) return true;
+      if (nameLC.includes('quiz') || nameLC.includes('exam')) {
+        console.log('[CanvasGrader] Quiz keyword in name — QUIZ MODE');
+        return true;
+      }
 
+      console.log('[CanvasGrader] Assignment is not a quiz — standard mode');
       return false;
     } catch (e) {
       // Network error or backend down — fall back to standard mode
@@ -49,6 +72,12 @@
       return false;
     }
   }
+
+  // ─── Startup diagnostic ───────────────────────────────────────────────
+  console.log('[CanvasGrader] Content script loaded on:', window.location.href);
+  isQuizPage().then(quiz => {
+    console.log('[CanvasGrader] Detection complete — mode:', quiz ? 'QUIZ' : 'STANDARD');
+  });
 
   // ─── Essay question scraping ──────────────────────────────────────────
 
