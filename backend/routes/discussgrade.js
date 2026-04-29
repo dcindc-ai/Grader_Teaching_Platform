@@ -2,6 +2,7 @@ const express = require('express');
 const Anthropic = require('@anthropic-ai/sdk');
 const { v4: uuidv4 } = require('uuid');
 const { db } = require('../db');
+const { refetchAndStoreRubricCriteria } = require('./canvasimport');
 const router = express.Router();
 
 // ─── Parse Canvas rubric CSV ──────────────────────────────────────────────
@@ -125,34 +126,58 @@ router.post('/grade', async (req, res) => {
   console.log('[discussgrade] grading_guidance:', gradingGuidance.slice(0, 100) || '(none)');
   console.log('[discussgrade] rubric_criteria stored:', !!assignmentRecord?.rubric_criteria);
 
-  // Prefer stored rubricCriteria from DB over what client sent
-  // BUT validate they match the assignment — reject stale criteria from other assignments
-  let rubricCriteria = clientRubric;
+  // Resolve rubric criteria. Priority order:
+  //   1. Stored DB criteria (if present)
+  //   2. Client-provided criteria
+  //   3. Auto-fetch from Canvas as fallback
+  // Only flag stored criteria as "stale" when the client ALSO sent a non-empty
+  // rubric AND the names don't overlap. An empty client rubric means "I have
+  // nothing to compare with" — never a reason to wipe stored data.
+  let rubricCriteria = null;
+  let stored = null;
   if (assignmentRecord?.rubric_criteria) {
     try {
-      const stored = JSON.parse(assignmentRecord.rubric_criteria);
-      if (Array.isArray(stored) && stored.length > 0) {
-        // Validate: check stored criteria names match client rubric names
-        // If they're completely different, the DB has stale data — use client rubric
-        const storedNames = stored.map(c => (c.name || '').toLowerCase());
-        const clientNames = (clientRubric || []).map(c => (c.name || '').toLowerCase());
-        const overlap = storedNames.filter(n =>
-          clientNames.some(cn => cn.includes(n.slice(0,15)) || n.includes(cn.slice(0,15)))
-        );
-        if (overlap.length >= Math.min(2, stored.length)) {
-          rubricCriteria = stored;
-          console.log('[discussgrade] Using stored criteria (validated match)');
-        } else {
-          console.log('[discussgrade] Stored criteria do not match Canvas rubric — using Canvas rubric');
-          // Clear the stale stored criteria
-          db.prepare('UPDATE assignments SET rubric_criteria=NULL WHERE id=?').run(assignmentId);
-        }
-      }
+      const parsed = JSON.parse(assignmentRecord.rubric_criteria);
+      if (Array.isArray(parsed) && parsed.length > 0) stored = parsed;
     } catch(e) {}
   }
 
+  if (stored && Array.isArray(clientRubric) && clientRubric.length > 0) {
+    const storedNames = stored.map(c => (c.name || '').toLowerCase());
+    const clientNames = clientRubric.map(c => (c.name || '').toLowerCase());
+    const overlap = storedNames.filter(n =>
+      clientNames.some(cn => cn.includes(n.slice(0,15)) || n.includes(cn.slice(0,15)))
+    );
+    if (overlap.length >= Math.min(2, stored.length)) {
+      rubricCriteria = stored;
+      console.log('[discussgrade] Using stored criteria (validated against client rubric)');
+    } else {
+      // Client clearly has a different rubric — trust the client and replace stored
+      console.log('[discussgrade] Stored criteria differ from client rubric — using client and updating DB');
+      rubricCriteria = clientRubric;
+      db.prepare('UPDATE assignments SET rubric_criteria=? WHERE id=?')
+        .run(JSON.stringify(clientRubric), assignmentId);
+    }
+  } else if (stored) {
+    rubricCriteria = stored;
+    console.log('[discussgrade] Using stored criteria (no client rubric to validate against)');
+  } else if (Array.isArray(clientRubric) && clientRubric.length > 0) {
+    rubricCriteria = clientRubric;
+    console.log('[discussgrade] Using client criteria (nothing stored)');
+  }
+
+  // Fallback: auto-refetch from Canvas if we still have nothing
+  if ((!rubricCriteria || rubricCriteria.length === 0) && assignmentId) {
+    console.log('[discussgrade] No criteria found — attempting Canvas auto-refetch');
+    const refetched = await refetchAndStoreRubricCriteria(assignmentId);
+    if (refetched && refetched.length > 0) {
+      rubricCriteria = refetched;
+      console.log(`[discussgrade] Canvas auto-refetch succeeded — ${refetched.length} criteria restored`);
+    }
+  }
+
   if (!rubricCriteria?.length) {
-    return res.status(400).json({ error: 'No rubric criteria found. Add rubric criteria to the assignment in your app first.' });
+    return res.status(400).json({ error: 'No rubric criteria found. Add rubric criteria to the assignment, or attach a rubric to it in Canvas and click Import from Canvas.' });
   }
 
   const criteriaText = rubricCriteria.map((c, i) => `

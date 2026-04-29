@@ -36,8 +36,9 @@ router.put('/:id', (req, res) => {
   const b = req.body;
   // Only update rubric_criteria if rubricCriteria was explicitly sent in the request
   // If absent (e.g. saving just strictness), preserve whatever is stored
+  // Decoupled from rubric text: criteria can exist without text and vice versa
   const rubricCriteriaValue = 'rubricCriteria' in b
-    ? (b.rubric ? (b.rubricCriteria ? JSON.stringify(b.rubricCriteria) : null) : null)
+    ? (Array.isArray(b.rubricCriteria) && b.rubricCriteria.length > 0 ? JSON.stringify(b.rubricCriteria) : null)
     : undefined; // undefined = don't touch it
 
   if (rubricCriteriaValue !== undefined) {
