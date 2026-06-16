@@ -1,3 +1,4 @@
+const { getModel } = require('../config');
 const express = require('express');
 const multer = require('multer');
 const fs = require('fs');
@@ -16,7 +17,7 @@ router.post('/parse', upload.single('file'), async (req, res) => {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
     const resp = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: getModel(),
       max_tokens: 1500,
       messages: [{
         role: 'user',

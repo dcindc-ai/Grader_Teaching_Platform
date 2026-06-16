@@ -1,3 +1,4 @@
+const { getModel } = require('../config');
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const { db } = require('../db');
@@ -281,7 +282,7 @@ router.post('/:id/insight', async (req, res) => {
 
   try {
     const resp = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: getModel(),
       max_tokens: 400,
       system: `You are an instructor writing a private insight note about a student's progress. Be honest, specific, and useful. No sentence over 18 words. No em dashes. Plain direct prose.`,
       messages: [{

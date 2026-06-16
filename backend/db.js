@@ -189,6 +189,7 @@ function parseCourse(r) {
     instructorBio:r.instructor_bio, voiceGuidelines:r.voice_guidelines,
     discussionDefaultQuestion:r.discussion_default_question,
     canvasUrl:r.canvas_url || '', canvasToken:r.canvas_token || '',
+    doNotPenalize:r.do_not_penalize || '',
     sliders:JSON.parse(r.sliders||'{"clarity":3,"logic":3,"structure":3,"tone":3,"style":3}'),
     createdAt:r.created_at };
 }

@@ -1,3 +1,4 @@
+const { getModel } = require('../config');
 const express = require('express');
 const Anthropic = require('@anthropic-ai/sdk');
 const { db } = require('../db');
@@ -42,7 +43,7 @@ ${JSON.stringify(students, null, 2)}`;
   try {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const resp = await client.messages.create({
-      model: 'claude-sonnet-4-20250514', max_tokens: 1000,
+      model: getModel(), max_tokens: 1000,
       system: `You are a teaching analytics assistant for Professor Dave Cook (UMD / Wake Forest). You have access to his complete grading history. Answer questions about student performance, trends, and teaching insights. Be specific, cite names and scores when relevant. Be concise and direct.`,
       messages: [{ role: 'user', content: `Corpus:\n${corpus}\n\nQuestion: ${question}` }]
     });

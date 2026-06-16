@@ -8,6 +8,7 @@ function migrate(db) {
     "ALTER TABLE courses ADD COLUMN response_defaults TEXT DEFAULT '{}'",
     "ALTER TABLE courses ADD COLUMN canvas_url TEXT DEFAULT ''",
     "ALTER TABLE courses ADD COLUMN canvas_token TEXT DEFAULT ''",
+    "ALTER TABLE courses ADD COLUMN do_not_penalize TEXT DEFAULT ''",  // universal per-course grading exceptions
     "ALTER TABLE assignments ADD COLUMN canvas_assignment_id TEXT DEFAULT ''",
     "ALTER TABLE grades ADD COLUMN criteria_feedback TEXT DEFAULT ''",
     "ALTER TABLE grades ADD COLUMN detailed_comments TEXT DEFAULT ''",  // per-criterion rich feedback

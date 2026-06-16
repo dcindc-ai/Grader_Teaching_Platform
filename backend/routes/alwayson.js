@@ -1,3 +1,4 @@
+const { getModel } = require('../config');
 const express = require('express');
 const { db, parseAlwaysOn } = require('../db');
 const router = express.Router();
@@ -426,7 +427,7 @@ router.post('/class-summary', async (req, res) => {
   try {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const resp = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: getModel(),
       max_tokens: 600,
       system: `You are ${course?.name || 'an instructor'} summarizing patterns across student Always-On learning recommendations.`,
       messages: [{
@@ -526,7 +527,7 @@ router.post('/generate', async (req, res) => {
 
     try {
       const resp = await client.messages.create({
-        model: 'claude-sonnet-4-20250514', max_tokens: 800,
+        model: getModel(), max_tokens: 800,
         system: `You are an instructor for ${course?.full_name || course?.name}. Generate class-wide Always-On learning recommendations based on patterns across all students.`,
         messages: [{ role: 'user', content: `Student data:\n${summary}\n\nReturn ONLY valid JSON:\n{"overview":"2-3 sentences on common gaps","recommendations":["specific actionable item 1","specific actionable item 2","optional third item"],"resources":[{"title":"resource title","url":"https://...","why":"1 sentence why this helps"}]}` }]
       });
@@ -550,7 +551,7 @@ router.post('/generate', async (req, res) => {
           : `Student: ${d.studentName}\nDiscussion response:\n${(d.response || '').slice(0, 600)}`;
 
         const resp = await client.messages.create({
-          model: 'claude-sonnet-4-20250514', max_tokens: 600,
+          model: getModel(), max_tokens: 600,
           system: `You are an instructor generating a personalized Always-On learning recommendation. Be specific to what this student wrote. No sentence over 18 words. No em dashes.`,
           messages: [{ role: 'user', content: `${context}\n\nReturn ONLY valid JSON:\n{"weakArea":"the specific gap in 5-8 words","feedback":"2-3 sentences of personalized next-step guidance","resources":[{"title":"resource","url":"https://...","why":"why this helps"}]}` }]
         });

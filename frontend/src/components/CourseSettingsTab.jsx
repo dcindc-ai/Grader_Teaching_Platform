@@ -100,6 +100,21 @@ export default function CourseSettingsTab({ course, password, onUpdate, onDelete
         </div>
       </div>
 
+      {/* Universal do-not-penalize */}
+      <div className="card" style={{ marginBottom: 14 }}>
+        <div style={{ fontWeight: 600, marginBottom: 4 }}>Universal Do-Not-Penalize</div>
+        <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 12 }}>
+          Applies to <strong>every</strong> assignment in this course, on top of any per-assignment exceptions.
+          List things the grader and feedback writer must never treat as a weakness, gap, or missing element.
+          One per line works well.
+        </div>
+        <div className="field" style={{ marginBottom: 0 }}>
+          <textarea rows={4} value={form.doNotPenalize||''} onChange={e=>upd('doNotPenalize',e.target.value)}
+            placeholder={'e.g. Do not penalize at all for code block references or how a prompt is formatted.\nDo not penalize for presenting a prompt as an image or screenshot.'}
+            style={{ fontSize: 12, lineHeight: 1.6 }} />
+        </div>
+      </div>
+
       {/* Voice & Response Style */}
       <div className="card" style={{ marginBottom: 14 }}>
         <div style={{ fontWeight: 600, marginBottom: 4 }}>Voice and Response Style</div>

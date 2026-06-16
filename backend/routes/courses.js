@@ -30,11 +30,11 @@ router.put('/:id', (req, res) => {
   const b = req.body;
   db.prepare(`UPDATE courses SET name=?,full_name=?,institution=?,term=?,color=?,color_dark=?,color_faint=?,
     instructor_bio=?,voice_guidelines=?,discussion_default_question=?,sliders=?,
-    canvas_url=?,canvas_token=? WHERE id=?`)
+    canvas_url=?,canvas_token=?,do_not_penalize=? WHERE id=?`)
     .run(b.name, b.fullName, b.institution, b.term, b.color, b.colorDark||b.color,
       b.colorFaint||`${b.color}22`, b.instructorBio, b.voiceGuidelines,
       b.discussionDefaultQuestion, JSON.stringify(b.sliders),
-      b.canvasUrl||'', b.canvasToken||'',
+      b.canvasUrl||'', b.canvasToken||'', b.doNotPenalize||'',
       req.params.id);
   res.json(parseCourse(db.prepare('SELECT * FROM courses WHERE id=?').get(req.params.id)));
 });

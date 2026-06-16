@@ -1,3 +1,4 @@
+const { getModel } = require('../config');
 const express = require('express');
 const Anthropic = require('@anthropic-ai/sdk');
 
@@ -67,7 +68,7 @@ Return ONLY valid JSON, no markdown fences:
 {"score": <number>, "feedback": "<one sentence>"}`;
 
       const message = await client.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: getModel(),
         max_tokens: 300,
         messages: [
           { role: 'user', content: `STUDENT RESPONSE:\n${studentResponse}` },

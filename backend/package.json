@@ -7,7 +7,7 @@
     "dev": "nodemon --exec \"node --experimental-sqlite\" server.js"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
+    "@anthropic-ai/sdk": "^0.104.2",
     "archiver": "^7.0.1",
     "cors": "^2.8.5",
     "docx": "^9.0.2",

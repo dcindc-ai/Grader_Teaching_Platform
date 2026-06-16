@@ -10,6 +10,51 @@ const RATING_COLORS = {
   'Unacceptable': '#DC2626'
 };
 
+// Normalize a criterion name for fuzzy matching: drop "Criterion 1:" prefixes,
+// lowercase, and strip everything that isn't alphanumeric. Lets "Quality of
+// Analysis" match "Quality of Analysis: depth and rigor".
+function normName(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/^criterion\s*\d+[:.\-)]*\s*/i, '')
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+// The model (and older saved grades) can return a criterionName that doesn't
+// EXACTLY equal the rubric's own name — it shortens, reorders, or drops a
+// prefix. If we keyed per-criterion feedback by the model's name, the comment
+// boxes (which read by the rubric's name) would show empty. This realigns every
+// model/grade result onto the canonical rubric criteria so each box reliably
+// fills. Returns a map keyed by the rubric criterion's exact name.
+function alignGrades(rubricCriteria, criteriaGrades) {
+  const cgs = Array.isArray(criteriaGrades) ? criteriaGrades.slice() : [];
+  const used = new Array(cgs.length).fill(false);
+  const pick = (predicate) => {
+    const idx = cgs.findIndex((cg, i) => !used[i] && predicate(cg, i));
+    if (idx === -1) return null;
+    used[idx] = true;
+    return cgs[idx];
+  };
+  const out = {};
+  rubricCriteria.forEach((c, i) => {
+    const cName = c.name;
+    const cNorm = normName(cName);
+    let cg =
+      pick(cg => cg.criterionName === cName) ||                                   // exact
+      pick(cg => normName(cg.criterionName) === cNorm) ||                         // normalized equal
+      pick(cg => { const n = normName(cg.criterionName);                          // substring either way
+        return n && cNorm && (n.includes(cNorm) || cNorm.includes(n)); });
+    if (!cg && cgs.length === rubricCriteria.length) cg = pick((_, idx) => idx === i); // positional fallback
+    out[cName] = {
+      points: cg?.suggestedPoints ?? cg?.finalPoints,
+      rating: cg?.suggestedRating || '',
+      scoring: cg?.scoringRationale || '',
+      student: cg?.studentComment || ''
+    };
+  });
+  return out;
+}
+
 // ── Unified Discussion Grader ────────────────────────────────────────────────
 // This is the main view. One student at a time.
 // Grade rubric + write instructor response in one place.
@@ -27,6 +72,20 @@ export default function DiscussGrader({ course, password, assignments, question,
   const [showSuggestions, setShowSuggestions] = useState(false);
   const nameInputRef = useRef(null);
   const [submission, setSubmission] = useState('');
+  const [attachedFiles, setAttachedFiles] = useState([]);  // [{ name, data: dataURL }]
+  const fileRef = useRef();
+
+  function readFiles(fileList) {
+    const files = Array.from(fileList || []);
+    Promise.all(files.map(f => new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = () => resolve({ name: f.name, data: reader.result });
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(f);
+    }))).then(loaded => {
+      setAttachedFiles(prev => [...prev, ...loaded.filter(Boolean)]);
+    });
+  }
 
   // Grading state
   const [grading, setGrading] = useState(false);
@@ -86,11 +145,22 @@ export default function DiscussGrader({ course, password, assignments, question,
         }));
     setResult({ criteriaGrades, totalPoints: g.total, totalMax: g.maxScore, overallSummary: g.summary, gradeId: g.id });
     const initScores = {}, initRatings = {}, initRationale = {};
-    criteriaGrades.forEach(cg => {
-      initScores[cg.criterionName] = cg.suggestedPoints;
-      initRatings[cg.criterionName] = cg.suggestedRating || '';
-      initRationale[cg.criterionName] = { scoring: cg.scoringRationale || '', student: cg.studentComment || '' };
-    });
+    if (rubricCriteria.length) {
+      // Key by the rubric's canonical names so the comment boxes fill reliably.
+      const aligned = alignGrades(rubricCriteria, criteriaGrades);
+      rubricCriteria.forEach(c => {
+        const a = aligned[c.name];
+        initScores[c.name] = a.points ?? 0;
+        initRatings[c.name] = a.rating;
+        initRationale[c.name] = { scoring: a.scoring, student: a.student };
+      });
+    } else {
+      criteriaGrades.forEach(cg => {
+        initScores[cg.criterionName] = cg.suggestedPoints;
+        initRatings[cg.criterionName] = cg.suggestedRating || '';
+        initRationale[cg.criterionName] = { scoring: cg.scoringRationale || '', student: cg.studentComment || '' };
+      });
+    }
     setScores(initScores); setRatings(initRatings); setRationale(initRationale);
     setResponse(g.instructor_paragraph || '');
     setSavedAsExample(false); setRefinement('');
@@ -155,17 +225,23 @@ export default function DiscussGrader({ course, password, assignments, question,
           body: JSON.stringify({
             courseId: course.id, assignmentId: selectedAssignment?.id,
             studentName, discussionQuestion: question || selectedAssignment?.description || '',
-            submission, rubricCriteria, instructorBio: course.instructorBio
+            submission, rubricCriteria, instructorBio: course.instructorBio,
+            attachedFiles
           })
         });
         gradeResult = await r.json();
         if (gradeResult.error) throw new Error(gradeResult.error);
         setResult(gradeResult);
+        // Align the model's results onto OUR rubric criteria (keyed by the
+        // rubric's exact name) so every comment box fills, even when the model
+        // reworded a criterion name. Score/rating edits write to these same keys.
+        const aligned = alignGrades(rubricCriteria, gradeResult.criteriaGrades);
         const initScores = {}, initRatings = {}, initRationale = {};
-        gradeResult.criteriaGrades?.forEach(cg => {
-          initScores[cg.criterionName] = cg.suggestedPoints;
-          initRatings[cg.criterionName] = cg.suggestedRating;
-          initRationale[cg.criterionName] = { scoring: cg.scoringRationale || '', student: cg.studentComment || '' };
+        rubricCriteria.forEach(c => {
+          const a = aligned[c.name];
+          initScores[c.name] = a.points ?? 0;
+          initRatings[c.name] = a.rating;
+          initRationale[c.name] = { scoring: a.scoring, student: a.student };
         });
         setScores(initScores); setRatings(initRatings); setRationale(initRationale);
 
@@ -183,7 +259,8 @@ export default function DiscussGrader({ course, password, assignments, question,
         method: 'POST',
         headers: { 'x-admin-password': password, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          courseId: course.id, question: question || selectedAssignment?.description || '',
+          courseId: course.id, assignmentId: selectedAssignment?.id,
+          question: question || selectedAssignment?.description || '',
           studentName, studentResponse: submission,
           tone, sentenceCount: sentences, wordsPerSentence, structure,
           voiceRules: course.responseDefaults?.voiceRules || ''
@@ -206,7 +283,8 @@ export default function DiscussGrader({ course, password, assignments, question,
         method: 'POST',
         headers: { 'x-admin-password': password, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          courseId: course.id, question: question || selectedAssignment?.description || '',
+          courseId: course.id, assignmentId: selectedAssignment?.id,
+          question: question || selectedAssignment?.description || '',
           studentName, studentResponse: submission,
           tone, sentenceCount: sentences, wordsPerSentence, structure,
           refinement, previousResponse: response,
@@ -315,7 +393,7 @@ export default function DiscussGrader({ course, password, assignments, question,
   }
 
   function nextStudent() {
-    setStudentName(''); setShowSuggestions(false); setSubmission(''); setResult(null);
+    setStudentName(''); setShowSuggestions(false); setSubmission(''); setAttachedFiles([]); setResult(null);
     setScores({}); setRatings({}); setRationale({});
     setResponse(''); setSavedAsExample(false); setRefinement('');
   }
@@ -494,6 +572,26 @@ export default function DiscussGrader({ course, password, assignments, question,
             <textarea rows={14} value={submission} onChange={e => setSubmission(e.target.value)}
               placeholder="Paste the full submission here…"
               style={{ fontSize: 13, lineHeight: 1.65, resize: 'vertical' }} />
+            {/* Attachments — images/PDFs the grader should actually look at */}
+            <div style={{ marginTop: 6 }}>
+              <input ref={fileRef} type="file" multiple accept="image/*,.pdf,.docx,.pptx" style={{ display: 'none' }}
+                onChange={e => { readFiles(e.target.files); e.target.value = ''; }} />
+              <button type="button" onClick={() => fileRef.current.click()} style={{ fontSize: 11, padding: '4px 9px' }}>
+                📎 Attach screenshot / file
+              </button>
+              {attachedFiles.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 6 }}>
+                  {attachedFiles.map((f, i) => (
+                    <span key={i} style={{ fontSize: 11, padding: '2px 7px', background: 'var(--bg2)',
+                      border: '1px solid var(--border)', borderRadius: 10, display: 'inline-flex', gap: 5, alignItems: 'center' }}>
+                      {f.name}
+                      <button type="button" onClick={() => setAttachedFiles(a => a.filter((_, j) => j !== i))}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: 0, fontWeight: 700 }}>✕</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Response style controls — collapsed by default */}
@@ -600,7 +698,7 @@ export default function DiscussGrader({ course, password, assignments, question,
                 const shortName = c.name.includes(':') ? c.name.split(':').pop().trim() : c.name;
 
                 return (
-                  <div key={c.id} className="card" style={{ marginBottom: 8 }}>
+                  <div key={c.id || c.name} className="card" style={{ marginBottom: 8 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                       <span style={{ fontWeight: 600, fontSize: 12 }}>{shortName}</span>
                       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -666,9 +764,12 @@ export default function DiscussGrader({ course, password, assignments, question,
                           }}>{r.name}</button>
                       ))}
                     </div>
+                    <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text3)', marginBottom: 3 }}>
+                      Feedback for this section — editable
+                    </div>
                     <textarea rows={2} value={ratText.student || ''}
                       onChange={e => setRationale(r => ({...r, [c.name]: {...r[c.name], student: e.target.value}}))}
-                      placeholder="Comment to student…"
+                      placeholder="No comment generated for this section. Type one here…"
                       style={{ fontSize: 11, lineHeight: 1.5, marginBottom: 0 }} />
                   </div>
                 );

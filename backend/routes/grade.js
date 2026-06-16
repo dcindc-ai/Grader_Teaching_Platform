@@ -1,3 +1,4 @@
+const { getModel } = require('../config');
 const express = require('express');
 const multer = require('multer');
 const fs = require('fs');
@@ -292,7 +293,7 @@ async function generateAlwaysOn(client, grade, course, assignment) {
   let searchResults = [];
   try {
     const searchResp = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: getModel(),
       max_tokens: 1000,
       tools: [{ type: 'web_search_20250305', name: 'web_search' }],
       messages: [{
@@ -310,7 +311,7 @@ async function generateAlwaysOn(client, grade, course, assignment) {
 
   // Generate feedback sentences and extract links
   const feedbackResp = await client.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: getModel(),
     max_tokens: 600,
     system: `You are generating Always-On learning recommendations for a graduate student. Be specific, constructive, and forward-looking. Sound like a helpful mentor, not a critic.`,
     messages: [{
@@ -449,7 +450,7 @@ async function gradeOne(filePath, assignment, course, skipAlwaysOn=false, origin
       }
       const mediaFiles = Object.keys(zip.files).filter(n => n.startsWith('ppt/media/') && /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(n));
       gradeMessageContent = [];
-      if (pptText) gradeMessageContent.push({ type: 'text', text: 'STUDENT POWERPOINT:\n' + pptText });
+      if (pptText) gradeMessageContent.push({ type: 'text', text: 'STUDENT POWERPOINT. Speaker notes are part of the submission — read them and count their content toward the rubric exactly like the slide content. If a required element or deliverable appears in a speaker note, treat that requirement as satisfied even if it is not on the slide itself:\n' + pptText });
       for (const imgPath of mediaFiles.slice(0,8)) {
         const imgData = await zip.files[imgPath].async('base64');
         const ext = imgPath.split('.').pop().toLowerCase();
@@ -481,7 +482,7 @@ async function gradeOne(filePath, assignment, course, skipAlwaysOn=false, origin
   }
 
   const resp = await client.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: getModel(),
     max_tokens: 2000,
     system: buildGradePrompt(assignment, course, examples, materials, gradeOptions),
     messages: [{ role: 'user', content: gradeMessageContent }]

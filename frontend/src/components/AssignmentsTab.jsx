@@ -1,9 +1,20 @@
 import { useState, useEffect, useRef } from 'react';
-import { getAssignments, createAssignment, updateAssignment, deleteAssignment, getExamples, addExample, deleteExample } from '../api.js';
+import { getAssignments, createAssignment, updateAssignment, deleteAssignment, getExamples, addExample, deleteExample, getExampleLibrary, copyExample } from '../api.js';
 
 const BASE = import.meta.env.PROD ? '' : 'http://localhost:3001';
 const SCORES_6 = [0.5,1,1.5,2,2.5,3,3.5,4,4.5,5,5.5,6];
 const SCORES_10 = [1,2,3,4,5,6,7,8,9,10];
+
+// Strip a trailing "(Spring 2026)" / "(Summer 2026)" suffix and loose term markers
+// so the same assignment across terms compares equal (used to surface same-assignment
+// examples first in the "From another term" picker).
+function baseName(n) {
+  return (n || '')
+    .replace(/\s*\((?:Spring|Summer|Fall|Winter)\s*20\d\d\)\s*$/i, '')
+    .replace(/[\s-]+(?:Summer|Spring|Fall|Winter)(?:\s*20\d\d)?\s*$/i, '')
+    .trim()
+    .toLowerCase();
+}
 
 export default function AssignmentsTab({ course, password }) {
   const [assignments, setAssignments] = useState([]);
@@ -15,6 +26,12 @@ export default function AssignmentsTab({ course, password }) {
   const [saved, setSaved] = useState(false);
   const [showAddEx, setShowAddEx] = useState(false);
   const [exForm, setExForm] = useState({ studentName: '', score: '4', quality: 'good', notes: '', content: '' });
+  const [showLibrary, setShowLibrary] = useState(false);
+  const [library, setLibrary] = useState([]);
+  const [loadingLibrary, setLoadingLibrary] = useState(false);
+  const [librarySearch, setLibrarySearch] = useState('');
+  const [sameAssignmentOnly, setSameAssignmentOnly] = useState(true);
+  const [copyingId, setCopyingId] = useState(null);
   const [parsing, setParsing] = useState(false);
   const [importingCanvas, setImportingCanvas] = useState(false);
   const pdfRef = useRef();
@@ -84,6 +101,7 @@ export default function AssignmentsTab({ course, password }) {
 
   useEffect(() => {
     if (selected) getExamples(selected.id, password).then(setExamples);
+    setShowLibrary(false); setLibrary([]); setLibrarySearch(''); setSameAssignmentOnly(true);
   }, [selected?.id]);
 
   function selectAssignment(a) {
@@ -171,6 +189,31 @@ export default function AssignmentsTab({ course, password }) {
   async function removeExample(exId) {
     await deleteExample(selected.id, exId, password);
     setExamples(e => e.filter(x => x.id !== exId));
+  }
+
+  async function openLibrary() {
+    const next = !showLibrary;
+    setShowLibrary(next);
+    if (next && library.length === 0) {
+      setLoadingLibrary(true);
+      try {
+        setLibrary(await getExampleLibrary(selected.id, password));
+      } catch (e) { alert('Could not load examples: ' + e.message); }
+      setLoadingLibrary(false);
+    }
+  }
+
+  async function addFromLibrary(srcEx) {
+    setCopyingId(srcEx.id);
+    try {
+      const { skipped, example } = await copyExample(selected.id, srcEx.id, password);
+      if (skipped) {
+        alert('Already present here — skipped to avoid a duplicate.');
+      } else {
+        setExamples(e => [example, ...e]);
+      }
+    } catch (e) { alert('Could not add: ' + e.message); }
+    setCopyingId(null);
   }
 
   const scoreOptions = (selected?.maxScore || 6) <= 6 ? SCORES_6 : SCORES_10;
@@ -463,10 +506,83 @@ export default function AssignmentsTab({ course, password }) {
                   } catch(e) { alert('Import error: ' + e.message); }
                   e.target.value = '';
                 }} />
+              <button style={{ fontSize:12 }} onClick={openLibrary}>{showLibrary?'Close':'📚 From another term'}</button>
               <button style={{ fontSize:12 }} onClick={() => jsonlRef.current.click()}>📥 Import JSONL</button>
               <button style={{ fontSize:12 }} onClick={() => setShowAddEx(!showAddEx)}>{showAddEx?'Cancel':'+ Add example'}</button>
             </div>
           </div>
+
+          {showLibrary && (
+            <div className="card" style={{ marginBottom:12, borderColor:course.color, borderWidth:2 }}>
+              <div style={{ fontSize:12, color:'var(--text2)', marginBottom:8 }}>
+                Pick an example from a previous term to carry forward as a calibration example here.
+              </div>
+              <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, color:'var(--text2)', marginBottom:8, cursor:'pointer' }}>
+                <input type="checkbox" checked={sameAssignmentOnly} onChange={e=>setSameAssignmentOnly(e.target.checked)} />
+                Only “{baseName(selected.name)}” from other terms
+              </label>
+              <input type="text" value={librarySearch} onChange={e=>setLibrarySearch(e.target.value)}
+                placeholder={sameAssignmentOnly ? 'Filter by student…' : 'Filter by assignment, course, or student…'}
+                style={{ width:'100%', marginBottom:10, padding:'6px 8px', fontSize:13 }} />
+              {loadingLibrary ? (
+                <div style={{ padding:'14px', textAlign:'center', color:'var(--text3)', fontSize:12 }}>Loading…</div>
+              ) : (() => {
+                const q = librarySearch.trim().toLowerCase();
+                const myBase = baseName(selected.name);
+                const rows = library
+                  // default: restrict to the SAME assignment from other terms
+                  .filter(r => !sameAssignmentOnly || baseName(r.assignment_name)===myBase)
+                  .filter(r => !q || `${r.assignment_name} ${r.course_full_name||r.course_name||''} ${r.student_name||''}`.toLowerCase().includes(q))
+                  // surface the same assignment from other terms first, then the rest
+                  .sort((a,b) => {
+                    const am = baseName(a.assignment_name)===myBase ? 0 : 1;
+                    const bm = baseName(b.assignment_name)===myBase ? 0 : 1;
+                    return am - bm || (a.assignment_name||'').localeCompare(b.assignment_name||'');
+                  });
+                if (!rows.length) return (
+                  <div style={{ padding:'14px', textAlign:'center', color:'var(--text3)', fontSize:12 }}>
+                    {sameAssignmentOnly
+                      ? `No examples for “${baseName(selected.name)}” in any other term. Uncheck above to browse all assignments.`
+                      : (library.length ? 'No matches.' : 'No examples found in any other assignment.')}
+                  </div>
+                );
+                const present = new Set(examples.map(e => `${(e.student_name||'').toLowerCase()}|${e.score}|${(e.content||'').slice(0,200)}`));
+                return (
+                  <div style={{ maxHeight:340, overflowY:'auto' }}>
+                    {rows.map(r => {
+                      const here = present.has(`${(r.student_name||'').toLowerCase()}|${r.score}|${(r.content||'').slice(0,200)}`);
+                      const relevant = baseName(r.assignment_name)===myBase;
+                      return (
+                        <div key={r.id} className="card" style={{ marginBottom:5, padding:'8px 10px' }}>
+                          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:8 }}>
+                            <div style={{ minWidth:0 }}>
+                              <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+                                <span style={{ fontWeight:500 }}>{r.student_name||'—'}</span>
+                                <span className={r.quality==='weak'?'pill-red':'pill-green'} style={{ fontSize:11, padding:'1px 8px' }}>{r.score}/{r.assignment_max_score}</span>
+                                {relevant && !sameAssignmentOnly && <span className="badge" style={{ fontSize:10 }}>same assignment</span>}
+                              </div>
+                              <div style={{ fontSize:11, color:'var(--text3)', marginTop:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                                {r.assignment_name}{r.course_full_name||r.course_name ? ` · ${r.course_full_name||r.course_name}` : ''}
+                              </div>
+                              {r.notes && <div style={{ fontSize:11, color:'var(--text2)', marginTop:2 }}>{r.notes}</div>}
+                            </div>
+                            {here ? (
+                              <span style={{ fontSize:11, color:'var(--text3)', whiteSpace:'nowrap' }}>✓ already here</span>
+                            ) : (
+                              <button className="primary" style={{ fontSize:11, padding:'3px 10px', whiteSpace:'nowrap' }}
+                                disabled={copyingId===r.id} onClick={()=>addFromLibrary(r)}>
+                                {copyingId===r.id ? 'Adding…' : '+ Add'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
 
           {showAddEx && (
             <div className="card" style={{ marginBottom:12,borderColor:course.color,borderWidth:2 }}>

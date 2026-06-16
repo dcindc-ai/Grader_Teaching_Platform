@@ -1,3 +1,4 @@
+const { getModel } = require('../config');
 const express = require('express');
 const router = express.Router();
 const { db, parseGrade, parseAssignment } = require('../db');
@@ -81,7 +82,7 @@ Requirements:
 
   try {
     const resp = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: getModel(),
       max_tokens: 3000,
       messages: [{ role: 'user', content: prompt }]
     });

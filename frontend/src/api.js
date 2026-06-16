@@ -37,6 +37,8 @@ export const deleteAssignment = (id, pw) => del(`/api/assignments/${id}`, pw);
 export const getExamples = (assignmentId, pw) => get(`/api/assignments/${assignmentId}/examples`, pw);
 export const addExample = (assignmentId, data, pw) => post(`/api/assignments/${assignmentId}/examples`, data, pw);
 export const deleteExample = (assignmentId, exId, pw) => del(`/api/assignments/${assignmentId}/examples/${exId}`, pw);
+export const getExampleLibrary = (assignmentId, pw) => get(`/api/assignments/${assignmentId}/examples/library`, pw);
+export const copyExample = (assignmentId, sourceExampleId, pw) => post(`/api/assignments/${assignmentId}/examples/copy`, { sourceExampleId }, pw);
 
 // Students
 export const getStudents = (courseId, pw) => get(`/api/students?courseId=${courseId}`, pw);

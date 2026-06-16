@@ -1,9 +1,50 @@
+const { getModel } = require('../config');
 const express = require('express');
 const Anthropic = require('@anthropic-ai/sdk');
+const { toFile } = Anthropic;
+// Large PDFs can't be inlined as base64 (request exceeds the API's max size → 413).
+// Upload them via the Files API and reference by file_id instead — keeps the request small.
+const FILES_BETA = ['files-api-2025-04-14'];
 const { v4: uuidv4 } = require('uuid');
 const { db } = require('../db');
 const { refetchAndStoreRubricCriteria } = require('./canvasimport');
 const router = express.Router();
+
+// Assignment instructions / rubric text often bake a presentation requirement into the
+// wording (e.g. "Format your prompt in a code block"). The instructor never grades
+// format, so we annotate those directives inline as not-graded before injecting the
+// text into the grading prompt. Non-destructive: only the model's copy is affected.
+function neutralizeFormatDirectives(text) {
+  if (!text) return text;
+  const PATTERN = /(code block|in a code block|using code blocks|format your (?:prompt|response|answer|post)|properly formatted|poorly formatted|formatting is (?:unclear|clear)|present(?:ed|ing)? .*\b(?:as a screenshot|as an image|in a table))/i;
+  return text.split(/\r?\n/).map(line =>
+    PATTERN.test(line)
+      ? line + '  [⚠ FORMATTING INSTRUCTION — NOT GRADED. Ignore this completely. Never lower any criterion or call anything missing because of it.]'
+      : line
+  ).join('\n');
+}
+
+// Deterministic backstop for generated feedback text. The model sometimes volunteers
+// code-block / formatting advice on its own even when nothing instructs it. Strip any
+// sentence that does so (plus a trailing follow-on referring back to it) so feedback
+// never critiques presentation, regardless of what the model returns.
+function scrubFormatMentions(text) {
+  if (!text) return text;
+  const FORMAT = /(code[- ]?block|\bformatting\b|format your|properly formatted|poorly formatted|\bmarkdown\b|in a code block|use a code block|structure your (?:prompt|response)s? more cleanly)/i;
+  const FOLLOWON = /^\s*(this|that|these|it|doing so)\b/i;
+  // Split only at real sentence boundaries (punctuation + space + capital/quote) so
+  // periods inside URLs like "artificialanalysis.ai" don't leave dangling fragments.
+  const sentences = text.split(/(?<=[.!?])\s+(?=["“A-Z])/);
+  let prevDropped = false;
+  const kept = [];
+  for (const s of sentences) {
+    if (FORMAT.test(s) || (prevDropped && FOLLOWON.test(s))) { prevDropped = true; continue; }
+    prevDropped = false;
+    kept.push(s);
+  }
+  const out = kept.join(' ').replace(/\s{2,}/g, ' ').trim();
+  return out || text;
+}
 
 // ─── Parse Canvas rubric CSV ──────────────────────────────────────────────
 
@@ -120,7 +161,13 @@ router.post('/grade', async (req, res) => {
   const assignmentRecord = assignmentId
     ? db.prepare('SELECT * FROM assignments WHERE id=?').get(assignmentId)
     : null;
-  const gradingGuidance = assignmentRecord?.grading_guidance || '';
+  // Merge the assignment's grading_guidance with the COURSE-LEVEL universal
+  // do-not-penalize, which applies to every assignment in the course.
+  const assignmentGuidance = assignmentRecord?.grading_guidance || '';
+  const courseGuidance = courseId
+    ? (db.prepare('SELECT do_not_penalize FROM courses WHERE id=?').get(courseId)?.do_not_penalize || '')
+    : '';
+  const gradingGuidance = [courseGuidance, assignmentGuidance].filter(Boolean).join('\n');
   console.log('[discussgrade] assignmentId:', assignmentId);
   console.log('[discussgrade] assignment name:', assignmentRecord?.name || 'NOT FOUND');
   console.log('[discussgrade] grading_guidance:', gradingGuidance.slice(0, 100) || '(none)');
@@ -198,27 +245,40 @@ ${c.ratings.map(r => `  - ${r.name} (${r.points} pts): ${r.description}`).join('
 
   const system = `You are ${instructorBio || 'an expert instructor'} grading a student discussion post. Read carefully before scoring anything.
 
+═══════════════════════════════════════════════════════════
+FORMATTING POLICY — ABSOLUTE, HIGHEST PRIORITY. Applies to EVERY assignment, always, whether or not instructor exceptions are listed below.
+Never lower any criterion for formatting, presentation, or how anything is displayed. This includes code blocks, plain text, tables, screenshots, images, and how a prompt or code is shown. A rating level's description may require or reward a particular format (for example "using code blocks", or downgrading for "formatting is unclear" or "poorly formatted"). When it does, mentally cross out that part of the rating description and score the level the work earns on substance alone. Never drop a tier, pick a lower level, or call something missing because of how it is presented. This holds even if the rubric or assignment appears to require a specific format.
+═══════════════════════════════════════════════════════════
+${gradingGuidance ? `
+═══════════════════════════════════════════════════════════
+INSTRUCTOR EXCEPTIONS — ABSOLUTE, HIGHEST PRIORITY.
+These override the rubric AND override any wording inside the rubric's own rating levels. Read them before you score anything.
+
+${gradingGuidance}
+
+How to apply them: a rating level's description may include wording that conflicts with an exception above (for example, requiring "code blocks", or downgrading for "formatting is unclear" or "poorly formatted"). When that happens, mentally cross out that part of the rating description and score the level the work earns on substance alone. Never drop a tier, and never pick a lower level, because of anything an exception above told you to ignore. If you are unsure whether an exception applies, assume it does and do NOT penalize.
+═══════════════════════════════════════════════════════════
+` : ''}
 CRITICAL: Grade ONLY against the ${rubricCriteria.length} criteria listed below. Do not reference other assignments.
 
 The criteria for THIS assignment:
 ${rubricCriteria.map((c,i) => `${i+1}. ${c.name}`).join('\n')}
 
 GRADING STANDARDS:
-- Half-point scores (12.5, 13.5 etc) are valid — use them when work falls between tiers
-- Reference specific words or choices from the submission, not generic observations
-- If the student almost makes a key connection but misses it, say exactly what they missed
-- If a required deliverable is absent or failed to render, flag it explicitly
-- If the student's own reasoning undercuts their argument, point that out
-- Be honest about weak work — a 10-12 should feel clearly different from 13-15
-${exampleContext ? "Use the calibration examples to anchor your scoring." : ""}
-${gradingGuidance ? `\nINSTRUCTOR EXCEPTIONS — HARD RULES, OVERRIDE THE RUBRIC:\n${gradingGuidance}` : ""}`;
+- The rubric is the authority${gradingGuidance ? ', except where an instructor exception above overrides it (the exceptions always win)' : ''}. For each criterion, read EVERY rating level description below, decide which level the work actually matches, then assign that level's exact point value.
+- The defined rating levels are the only valid scores. Use a half-point between two adjacent levels ONLY when the work genuinely sits between them. Do not invent a wider scale.
+- Never score a criterion below its lowest defined rating level. That lowest level is the floor for that criterion.
+- Quote or paraphrase the student's actual words as evidence for every score. No generic observations.
+- If the student almost makes a key connection but misses it, say exactly what they missed.
+- A missing required element affects only the one criterion that measures it. Never apply an across-the-board penalty.
+${exampleContext ? "Use the calibration examples to anchor your scoring." : ""}`;
   const VOICE_RULES = `VOICE RULES — NON-NEGOTIABLE:
 No em-dashes (— or --). Use periods or commas instead.
 No filler: never write "it's worth noting", "importantly", "overall", "in conclusion", "to be fair", "that said", "having said that", "I hope this helps", "I wanted to".
 No AI tells: no "delves into", "showcases", "demonstrates a nuanced", "commendable", "impressive grasp", "testament to", "robust", "leverages".
 No comparisons to other students. Never say "most students", "other students", "the class", "compared to peers", "one of the best", "stronger than most", "unlike your classmates". Each student is evaluated on their own work only.
 Short sentences. Plain words. One idea per sentence.
-Start with the student's first name only.
+Address the student directly as "you". Never use the student's name.
 Sound like a person talking, not a rubric being read.
 If something is missing, say it plainly. If something is strong, name exactly what is strong.`;
 
@@ -246,30 +306,37 @@ If something is missing, say it plainly. If something is strong, name exactly wh
   };
   const styleInstruction = styleMap[feedbackStyle] || styleMap['balanced'];
 
+  // Per-criterion comments use the selected voice for TONE only. The voice's
+  // paragraph-level scaffolding (its numbered 1-4 structure and its "preferred
+  // phrases" openers) is written for the single overall summary paragraph — applying
+  // it to every criterion makes them all open the same way (e.g. "This is strong work.").
+  // This scope note keeps the voice tailorable while preventing that repetition.
+  const COMMENT_SCOPE = ' These are short, standalone per-criterion notes — NOT the overall summary paragraph. Apply the voice above for TONE only; do NOT use its numbered paragraph structure or its "preferred phrases" here (those belong only to the summary paragraph). Each criterion\'s comment must open differently — never reuse the same opening sentence across criteria, and never lead with a stock phrase like "This is strong work." When it genuinely fits, quote or closely paraphrase the student\'s own words for THIS criterion so they can tell their specific work was read — but do not force a quote into every comment.';
+
   // Skill assessment mode: deeper, more pointed per-criterion feedback
   const criterionCommentInstruction = isSkillAssessment
-    ? '2-4 sentences. ' + toneInstructions + ' Be specific and direct. Name the exact thing they did well or the exact gap. Reference something they actually wrote. Tell them what a stronger version would look like.'
-    : '1-2 sentences. ' + toneInstructions + ' Be specific. Reference something they actually wrote. Only include if score is not perfect.';
+    ? '2-4 sentences. ' + toneInstructions + COMMENT_SCOPE + ' Be specific and direct: name the exact gap, one concrete way to improve it, and what a stronger version would look like.'
+    : '1-2 sentences. ' + toneInstructions + COMMENT_SCOPE + ' Name one concrete area to improve. Only include if score is not perfect.';
 
   const paragraphInstruction = isSkillAssessment
-    ? toneInstructions + ' ' + styleInstruction + ' Write EXACTLY ' + sentenceCount + ' sentences — no more, no fewer. Count them before finalizing. Start with first name only. Name the specific intellectual move they made. Be honest about gaps. End with something personal and forward-looking. Max 20 words per sentence. Address the student as "you" throughout.'
-    : toneInstructions + ' ' + styleInstruction + ' Write EXACTLY ' + sentenceCount + ' sentences — count them. Start with first name only. Max 18 words per sentence. No jargon. Address the student as "you" throughout, not "the student".';
+    ? toneInstructions + ' ' + styleInstruction + ' Write EXACTLY ' + sentenceCount + ' sentences — no more, no fewer. Count them before finalizing. Quote or reference something the student actually wrote. Name the specific intellectual move they made. Be honest about gaps and give a concrete area to improve. End with something forward-looking. Max 20 words per sentence. Address the student as "you" throughout, never by name.'
+    : toneInstructions + ' ' + styleInstruction + ' Write EXACTLY ' + sentenceCount + ' sentences — count them. Reference something the student actually wrote and name a concrete area to improve. Max 18 words per sentence. No jargon. Address the student as "you" throughout, never by name and never as "the student".';
 
   // Include full assignment description if available — this is what students were asked to do
   const assignmentInstructions = assignmentRecord?.description || '';
 
   const prompt = `ASSIGNMENT INSTRUCTIONS (what students were explicitly asked to do):
-${assignmentInstructions || discussionQuestion || 'No instructions provided'}
+${neutralizeFormatDirectives(assignmentInstructions || discussionQuestion || 'No instructions provided')}
 
-STUDENT: ${studentName}
 SUBMISSION:
 ${submission}
 
 RUBRIC CRITERIA:
 ${criteriaText}
 
-Grade this submission. Check it against BOTH the assignment instructions AND the rubric criteria.
-If the assignment instructions required something specific (a distinction, a format, a deliverable) that the student missed, that should affect the score even if the rubric description is vague about it.
+Grade this submission against the rubric criteria. The rubric is the authority, EXCEPT where the formatting policy or instructor exceptions at the top override it. Per the formatting policy, never let any rating level's wording about formatting, presentation, or how prompts or code are displayed pull the score down — this applies on every assignment, even with no instructor exceptions listed. Score each criterion using its own rating levels, matching the work to a level based on that level's description.
+A missing required element should lower only the specific criterion that measures it. Do not invent requirements the rubric does not list, and do not lower other criteria for it.
+If you cannot find evidence for a criterion, it may simply not be pasted here. Score what is present and say what you could not find. Do not assume failure or default a criterion to its floor just because content is absent from the text.
 You MUST return a criteriaGrades entry for EVERY criterion — no exceptions.
 
 REQUIRED CRITERIA (you must include all ${rubricCriteria.length} in your response):
@@ -298,6 +365,7 @@ Return ONLY valid JSON, no markdown fences:
   try {
     // Build message content — include all attached files (images + PDFs) + screenshot
     let messageContent;
+    const uploadedFileIds = [];  // PDFs uploaded to Files API; cleaned up after grading
     const allFiles = attachedFiles || [];
     const hasScreenshot = screenshotData && screenshotData.startsWith('data:image/');
     const hasFiles = allFiles.length > 0;
@@ -316,8 +384,21 @@ Return ONLY valid JSON, no markdown fences:
         const mediaType = file.data.split(';')[0].split(':')[1];
 
         if (mediaType === 'application/pdf') {
-          parts.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } });
-          console.log('[discussgrade] Including PDF:', file.name);
+          // Upload via Files API (handles PDFs of any byte size); fall back to
+          // inline base64 only if the upload itself fails.
+          try {
+            const pdfBuf = Buffer.from(base64, 'base64');
+            const uploaded = await client.beta.files.upload({
+              file: await toFile(pdfBuf, file.name || 'submission.pdf', { type: 'application/pdf' }),
+              betas: FILES_BETA,
+            });
+            uploadedFileIds.push(uploaded.id);
+            parts.push({ type: 'document', source: { type: 'file', file_id: uploaded.id } });
+            console.log('[discussgrade] Uploaded PDF via Files API:', file.name, '->', uploaded.id);
+          } catch (upErr) {
+            console.warn('[discussgrade] Files API upload failed, inlining PDF instead:', upErr.message);
+            parts.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } });
+          }
         } else if (mediaType && mediaType.startsWith('image/')) {
           parts.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } });
           console.log('[discussgrade] Including image:', file.name);
@@ -361,7 +442,7 @@ Return ONLY valid JSON, no markdown fences:
               }
             }
             if (pptText) {
-              parts.push({ type: 'text', text: 'ATTACHED POWERPOINT (' + file.name + '):\n' + pptText });
+              parts.push({ type: 'text', text: 'ATTACHED POWERPOINT (' + file.name + '). Speaker notes are part of the submission — read them and count their content toward the rubric exactly like the slide content. If a required element or deliverable appears in a speaker note, treat that requirement as satisfied even if it is not on the slide itself:\n' + pptText });
               console.log('[discussgrade] Including PPTX text:', file.name, pptText.length, 'chars');
             }
 
@@ -431,16 +512,36 @@ Return ONLY valid JSON, no markdown fences:
       messageContent = prompt;
     }
 
-    const resp = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+    const createParams = {
+      model: getModel(),
       max_tokens: 4000,
       system,
       messages: [{ role: 'user', content: messageContent }]
-    });
+    };
+    let resp;
+    try {
+      // File-referenced PDFs require the Files API beta; otherwise use the standard call.
+      resp = uploadedFileIds.length
+        ? await client.beta.messages.create({ ...createParams, betas: FILES_BETA })
+        : await client.messages.create(createParams);
+    } finally {
+      // Best-effort cleanup so uploaded PDFs don't accumulate in the account.
+      for (const fid of uploadedFileIds) {
+        try { await client.beta.files.delete(fid, { betas: FILES_BETA }); }
+        catch (delErr) { console.warn('[discussgrade] Could not delete uploaded file', fid, '-', delErr.message); }
+      }
+    }
 
     const text = resp.content.find(b => b.type === 'text')?.text || '{}';
     const result = JSON.parse(text.replace(/```json\n?|```/g, '').trim());
     console.log(`[discussgrade] criteriaGrades returned: ${result.criteriaGrades?.length} items for ${rubricCriteria.length} criteria`);
+
+    // Deterministic backstop: scrub any formatting/code-block critique the model
+    // volunteered, from both the overall paragraph and each criterion comment.
+    if (result.instructorParagraph) result.instructorParagraph = scrubFormatMentions(result.instructorParagraph);
+    result.criteriaGrades?.forEach(cg => {
+      if (cg.studentComment) cg.studentComment = scrubFormatMentions(cg.studentComment);
+    });
 
     // Save to grades table if assignment provided
     if (assignmentId && courseId) {
@@ -514,6 +615,7 @@ Return ONLY valid JSON, no markdown fences:
 
     res.json(result);
   } catch (e) {
+    console.error('[discussgrade] GRADING ERROR:', e.message, e.stack);
     res.status(500).json({ error: e.message });
   }
 });
@@ -550,13 +652,14 @@ router.post('/regenerate-feedback', async (req, res) => {
   try {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const resp = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: getModel(),
       max_tokens: 400,
       system: `You are ${instructorBio || 'an instructor'} writing personalized feedback to a student.
 Tone: ${toneDesc}
 Length: ${lengthDesc}
 Directness: ${directnessDesc}
-Start with the student's first name.
+Address the student as "you". Never use the student's name.
+Cite something the student actually wrote, and name a concrete area to improve.
 Writing style rules (apply to all generated text):
 - No sentence may exceed 18 words. Break long sentences into two.
 - Avoid colons, semicolons, and em dashes. Use periods instead.

@@ -1,3 +1,4 @@
+const { getModel } = require('../config');
 const express = require('express');
 const Anthropic = require('@anthropic-ai/sdk');
 const fs = require('fs');
@@ -91,7 +92,7 @@ When reading files, you can ask the user to share them or reference them by path
     res.setHeader('Connection', 'keep-alive');
 
     const stream = await client.messages.stream({
-      model: 'claude-sonnet-4-20250514',
+      model: getModel(),
       max_tokens: 8000,
       system,
       messages: [...priorMessages, { role: 'user', content: userContent.length > 1 || files.length ? userContent : lastUser?.content || '' }]

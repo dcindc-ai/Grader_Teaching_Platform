@@ -1,3 +1,4 @@
+const { getModel } = require('../config');
 const express = require('express');
 const Anthropic = require('@anthropic-ai/sdk');
 const { db } = require('../db');
@@ -184,7 +185,7 @@ router.get('/keyword-patterns', async (req, res) => {
   try {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const resp = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: getModel(),
       max_tokens: 1000,
       system: 'You are analyzing patterns in student writing to help an instructor understand what distinguishes strong from weak submissions.',
       messages: [{

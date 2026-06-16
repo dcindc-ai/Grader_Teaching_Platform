@@ -1,3 +1,4 @@
+const { getModel } = require('../config');
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const { db, parseAssignment } = require('../db');
@@ -126,6 +127,51 @@ router.post('/:id/examples/import', (req, res) => {
   res.json({ imported, errors, total: lines.length });
 });
 
+// GET /api/assignments/:id/examples/library — every example from OTHER assignments
+// (any course / any term), so the instructor can browse and carry one forward as a
+// calibration example for this assignment. Each row carries its source assignment
+// name, course, and max_score so the term is identifiable in the picker.
+router.get('/:id/examples/library', (req, res) => {
+  const rows = db.prepare(`
+    SELECT e.id, e.assignment_id, e.course_id, e.student_name, e.score, e.quality, e.notes, e.content, e.created_at,
+           a.name AS assignment_name, a.max_score AS assignment_max_score,
+           c.name AS course_name, c.full_name AS course_full_name
+    FROM examples e
+    JOIN assignments a ON e.assignment_id = a.id
+    LEFT JOIN courses c ON a.course_id = c.id
+    WHERE e.assignment_id != ?
+    ORDER BY a.name ASC, e.created_at DESC
+  `).all(req.params.id);
+  res.json(rows);
+});
+
+// POST /api/assignments/:id/examples/copy — carry one example forward into THIS
+// assignment as a calibration example. Body: { sourceExampleId }. Copies under a new
+// id with this assignment's course_id. Idempotent: skips if an equivalent example
+// (same student + score + content prefix) is already present here.
+router.post('/:id/examples/copy', (req, res) => {
+  const { sourceExampleId } = req.body;
+  if (!sourceExampleId) return res.status(400).json({ error: 'sourceExampleId required' });
+
+  const src = db.prepare('SELECT * FROM examples WHERE id=?').get(sourceExampleId);
+  if (!src) return res.status(404).json({ error: 'Source example not found' });
+
+  const asg = db.prepare('SELECT id, course_id FROM assignments WHERE id=?').get(req.params.id);
+  if (!asg) return res.status(404).json({ error: 'Assignment not found' });
+
+  const dup = db.prepare(
+    "SELECT id FROM examples WHERE assignment_id=? AND student_name IS ? AND score IS ? AND substr(COALESCE(content,''),1,200)=substr(COALESCE(?,''),1,200) LIMIT 1"
+  ).get(asg.id, src.student_name, src.score, src.content);
+  if (dup) {
+    return res.json({ skipped: true, example: db.prepare('SELECT * FROM examples WHERE id=?').get(dup.id) });
+  }
+
+  const id = uuidv4();
+  db.prepare('INSERT INTO examples (id,assignment_id,course_id,student_name,score,quality,notes,content) VALUES (?,?,?,?,?,?,?,?)')
+    .run(id, asg.id, asg.course_id || '', src.student_name, src.score, src.quality, src.notes, src.content);
+  res.json({ skipped: false, example: db.prepare('SELECT * FROM examples WHERE id=?').get(id) });
+});
+
 router.delete('/:id/examples/:exId', (req, res) => {
   db.prepare('DELETE FROM examples WHERE id=?').run(req.params.exId);
   res.json({ ok: true });
@@ -149,7 +195,7 @@ router.post('/parse-pdf', upload2.single('file'), async (req, res) => {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
     const resp = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: getModel(),
       max_tokens: 2000,
       messages: [{
         role: 'user',

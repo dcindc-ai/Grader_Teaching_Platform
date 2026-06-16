@@ -1,3 +1,4 @@
+const { getModel } = require('../config');
 const express = require('express');
 const Anthropic = require('@anthropic-ai/sdk');
 const { db, parseGrade, firstName } = require('../db');
@@ -23,7 +24,7 @@ router.post('/regenerate/:gradeId', async (req, res) => {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const firstName = (grade.studentName || 'Student').split(' ')[0];
     const resp = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: getModel(),
       max_tokens: 400,
       system: `You are ${course?.instructor_bio ? 'Dave Cook, ' + course.instructor_bio : 'an instructor'} giving personalized feedback to a student.
 

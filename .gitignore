@@ -5,3 +5,4 @@ backend/data/
 dist/
 .DS_Store
 *.log
+.claude/
