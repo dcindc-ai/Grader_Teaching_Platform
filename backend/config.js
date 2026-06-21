@@ -49,23 +49,28 @@ async function resolveModel() {
 // flagConsistency switch is on, so it is fully reversible. Two phrasings:
 // one for rubric-criteria grading (rating bands), one for points-only grading.
 
-// Banded version — used by the rubric-criteria grader (web app).
-const SCORING_CONSISTENCY_RULE_BANDED = `SCORING CONSISTENCY CHECK (apply to every criterion before finalizing its score):
-A criterion's numeric score must match the severity of the issues described in that same criterion's own comment.
-- If the comment describes only minor, cosmetic, or stylistic issues (typos, a missing cross-reference, small clarity gaps), the top rating band is fine.
-- If the comment describes a substantive flaw, the score should drop at least one band below the top. Substantive means a required element is missing, or the work contradicts itself internally (for example, one section analyzes components that were never defined in the section that was supposed to define them).
-- The test for substantive vs. cosmetic: a flaw is substantive when fixing it requires reworking content, not just relabeling or correcting surface errors.
-Do NOT change the overall grading generosity or shift the score distribution up or down across the board. Benefit of the doubt still applies to ambiguity, interpretation, and minor omissions. It does NOT apply to missing required elements or internal contradictions.
-Do NOT silently reconcile a mismatch by softening the comment or nudging the score. If, after this check, a criterion's comment and score still appear to disagree, leave BOTH exactly as written and flag it: set "consistencyFlag": true, write a one-sentence "consistencyNote" naming the disagreement, and set "suggestedBand" to the band the comment actually supports. When the comment and score agree, set "consistencyFlag": false.`;
+// Banded version — used by the rubric-criteria grader (web app + Canvas panel).
+// FLAG-ONLY: this check must never change a score. It grades exactly as before
+// (same generosity, same distribution) and only surfaces comment/score
+// disagreements for the instructor to confirm — never silently adjusts.
+const SCORING_CONSISTENCY_RULE_BANDED = `SCORING CONSISTENCY CHECK — this is a FLAG-ONLY check. It must NOT change how you score.
+Grade every criterion exactly as you normally would, with your normal generosity. Do NOT lower (or raise) any score because of this check. It never shifts the score distribution and never makes grading harsher.
+After you have assigned each criterion's score AND written its comment/rationale, compare the two for agreement — do not change either; only decide whether to flag:
+- If the comment describes only minor, cosmetic, or stylistic issues (typos, a missing cross-reference, small clarity gaps), a top-band score is consistent with it. Do NOT flag.
+- If the comment describes a SUBSTANTIVE flaw — a required element is missing, or the work contradicts itself internally (for example, one section analyzes components that another section never defined) — while the score still sits at the top band, that is the only case to flag. Leave the score exactly as you assigned it and leave the comment exactly as written. Do NOT lower the score to "fix" it. Set "consistencyFlag": true, write a one-sentence "consistencyNote" naming the disagreement, and set "suggestedBand" to the lower band the comment would support so the instructor can decide.
+Substantive vs. cosmetic test: a flaw is substantive when fixing it requires reworking content, not just relabeling or correcting surface errors.
+Benefit of the doubt still applies to ambiguity, interpretation, and minor omissions — never flag those. Only flag a missing required element or an internal contradiction.
+When the comment and score already agree, set "consistencyFlag": false. The instructor, not you, decides whether any flagged score actually changes.`;
 
-// Points-only version — used by the quiz/essay grader (browser extension).
-const SCORING_CONSISTENCY_RULE_POINTS = `SCORING CONSISTENCY CHECK:
-The points you assign must match the severity of what you say in your feedback sentence.
-- If your feedback notes that a required part of the answer is missing or wrong, the score must NOT be full or near-full — a substantive gap costs real points.
-- Cosmetic issues alone (a typo, slightly unclear phrasing) do not require a deduction.
-- A flaw is substantive when fixing it requires reworking the answer's content, not just surface wording.
-Do NOT change overall generosity or shift scores up or down across the board. Benefit of the doubt still applies to ambiguity and minor omissions, never to a missing required element.
-Do NOT silently reconcile a mismatch. If your sentence describes a substantive gap but your score is high, leave both as written and flag it: set "consistencyFlag": true and write a one-sentence "consistencyNote" naming the disagreement. Otherwise set "consistencyFlag": false.`;
+// Points-only version — used by the quiz/essay grader (browser extension popup).
+// FLAG-ONLY: same principle, adapted to a single score + one feedback sentence.
+const SCORING_CONSISTENCY_RULE_POINTS = `SCORING CONSISTENCY CHECK — this is a FLAG-ONLY check. It must NOT change how you score.
+Score the answer exactly as you normally would, with your normal generosity. Do NOT lower the score because of this check.
+After scoring and writing your one-sentence feedback, compare them — do not change either; only decide whether to flag:
+- If your feedback notes only cosmetic issues (a typo, slightly unclear phrasing), do NOT flag.
+- If your feedback says a required part of the answer is missing or wrong while your score is full or near-full, that is the case to flag. Leave the score and the feedback exactly as written — do NOT lower the score to "fix" it. Set "consistencyFlag": true and write a one-sentence "consistencyNote" naming the disagreement.
+A flaw is substantive when fixing it requires reworking the answer's content, not surface wording. Benefit of the doubt still applies to ambiguity and minor omissions — never flag those.
+When the score and feedback already agree, set "consistencyFlag": false. The instructor, not you, decides whether any flagged score actually changes.`;
 
 module.exports = {
   getModel,
