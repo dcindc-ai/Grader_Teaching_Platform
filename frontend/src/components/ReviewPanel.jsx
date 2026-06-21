@@ -61,6 +61,7 @@ export default function ReviewPanel({ grade: initialGrade, assignment, password,
   const [editingName, setEditingName] = useState(false);
   const [resource, setResource] = useState({ title: '', url: '', why: '' });
   const [showResourceForm, setShowResourceForm] = useState(false);
+  const [dismissedFlags, setDismissedFlags] = useState({});
 
   const s = grade.scores || {};
   const total = parseFloat(grade.total) || 0;
@@ -365,6 +366,21 @@ export default function ReviewPanel({ grade: initialGrade, assignment, password,
                     </div>
                   </div>
                 </div>
+                {cf.consistencyFlag && !dismissedFlags[i] && (
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 14px',
+                    background: 'rgba(186,117,23,0.10)', borderBottom: '1px solid rgba(239,159,39,0.5)' }}>
+                    <span style={{ color: 'var(--amber)', fontSize: 14, flexShrink: 0, lineHeight: 1.4 }}>⚠</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--amber)', marginBottom: 2 }}>Score may not match the comment</div>
+                      <div style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--text2)' }}>{cf.consistencyNote}</div>
+                      {cf.suggestedBand && (
+                        <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>Suggested band: <strong>{cf.suggestedBand}</strong></div>
+                      )}
+                      <button onClick={() => setDismissedFlags(d => ({ ...d, [i]: true }))}
+                        style={{ fontSize: 11, padding: '3px 8px', marginTop: 8, color: 'var(--text2)' }}>Dismiss</button>
+                    </div>
+                  </div>
+                )}
                 <div style={{ padding: '10px 14px' }}>
                   {cf.strengths && (
                     <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>

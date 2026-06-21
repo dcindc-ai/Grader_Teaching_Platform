@@ -1,4 +1,4 @@
-const { getModel } = require('../config');
+const { getModel, SCORING_CONSISTENCY_RULE_POINTS } = require('../config');
 const express = require('express');
 const Anthropic = require('@anthropic-ai/sdk');
 
@@ -22,13 +22,19 @@ const VOICE_RULES = "VOICE RULES: No em-dashes. No filler phrases (it's worth no
 // Body: { questions: [{ questionText, studentResponse, maxPoints, scoringComments }], tone }
 router.post('/', async (req, res) => {
   try {
-    const { questions, tone } = req.body;
+    const { questions, tone, flagConsistency } = req.body;
 
     if (!questions || !Array.isArray(questions) || questions.length === 0) {
       return res.status(400).json({ error: 'questions array is required' });
     }
 
     const toneInstruction = TONE_MAP[tone] || TONE_MAP['plain-warm'];
+    // Scoring-consistency check: reversible, off unless the request opts in.
+    const flagOn = flagConsistency === true || flagConsistency === 'true' || flagConsistency === 1 || flagConsistency === '1' || flagConsistency === 'on';
+    const consistencyRuleBlock = flagOn ? `\n${SCORING_CONSISTENCY_RULE_POINTS}\n` : '';
+    const resultSchema = flagOn
+      ? '{"score": <number>, "feedback": "<one sentence>", "consistencyFlag": <true|false>, "consistencyNote": "<one sentence, only when consistencyFlag is true>"}'
+      : '{"score": <number>, "feedback": "<one sentence>"}';
     const client = new Anthropic();
     const results = [];
 
@@ -57,7 +63,7 @@ ${scoringComments}` : 'No specific scoring guide provided. Grade based on the qu
 FEEDBACK VOICE:
 ${toneInstruction}
 ${VOICE_RULES}
-
+${consistencyRuleBlock}
 INSTRUCTIONS:
 1. Read the student's response carefully.
 2. Compare it against the question requirements and the scoring guide (if provided).
@@ -65,7 +71,7 @@ INSTRUCTIONS:
 4. Write exactly ONE sentence of feedback. Be specific about what the student did well or what they missed.
 
 Return ONLY valid JSON, no markdown fences:
-{"score": <number>, "feedback": "<one sentence>"}`;
+${resultSchema}`;
 
       const message = await client.messages.create({
         model: getModel(),
@@ -96,6 +102,10 @@ Return ONLY valid JSON, no markdown fences:
         score: Math.min(parsed.score, maxPoints),
         maxPoints,
         feedback: parsed.feedback || '',
+        ...(flagOn ? {
+          consistencyFlag: !!parsed.consistencyFlag,
+          consistencyNote: parsed.consistencyNote || '',
+        } : {}),
       });
     }
 

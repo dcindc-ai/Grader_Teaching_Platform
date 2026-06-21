@@ -21,6 +21,7 @@ export default function GradeTab({ course, password, activeAssignmentId, queue, 
   const [tone, setTone] = useState('plain-warm');
   const [style, setStyle] = useState('balanced');
   const [sentences, setSentences] = useState(4);
+  const [flagConsistency, setFlagConsistency] = useState(true);
 
   useEffect(() => {
     getAssignments(course.id, password).then(a => {
@@ -71,7 +72,7 @@ export default function GradeTab({ course, password, activeAssignmentId, queue, 
           setProgress(p => ({ ...p, done: evt.index + 1 }));
           if (evt.grade) onResults(r => [evt.grade, ...r]);
         }
-      });
+      }, { flagConsistency });
     } catch (e) { alert('Error: ' + e.message); }
     // Reload from DB to make sure everything persisted
     if (selectedId) getGrades(course.id, selectedId, password).then(setDbGrades);
@@ -176,6 +177,12 @@ export default function GradeTab({ course, password, activeAssignmentId, queue, 
                   </select>
                 </div>
               </div>
+              {/* Scoring-consistency check — reversible, defaults on */}
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, cursor: 'pointer', fontSize: 12, color: 'var(--text2)' }}>
+                <input type="checkbox" checked={flagConsistency} onChange={e => setFlagConsistency(e.target.checked)} />
+                <span>Flag score / comment mismatches</span>
+                <span style={{ fontSize: 10, color: 'var(--text3)' }}>warns when a score doesn't match its comment</span>
+              </label>
               <button className="primary" style={{ width: '100%', padding: 12, fontSize: 14, fontWeight: 600 }}
                 onClick={runGrading} disabled={grading || !selectedId}>
                 {grading ? `Grading ${progress.done} / ${progress.total}…` : `Grade ${pending.length} submission${pending.length !== 1 ? 's' : ''}`}

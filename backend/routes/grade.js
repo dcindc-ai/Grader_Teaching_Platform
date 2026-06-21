@@ -1,4 +1,4 @@
-const { getModel } = require('../config');
+const { getModel, SCORING_CONSISTENCY_RULE_BANDED } = require('../config');
 const express = require('express');
 const multer = require('multer');
 const fs = require('fs');
@@ -116,6 +116,9 @@ function buildGradePrompt(assignment, course, examples, materials, gradeOptions 
   const tone = gradeOptions.tone || 'plain-warm';
   const style = gradeOptions.style || 'balanced';
   const sentences = gradeOptions.sentences || 4;
+  // Scoring-consistency check: reversible, off unless the request opts in.
+  const flagConsistency = !!gradeOptions.flagConsistency;
+  const consistencyRuleBlock = flagConsistency ? `\n${SCORING_CONSISTENCY_RULE_BANDED}\n` : '';
 
   const toneMap = {
     'plain-warm':    'Conversational and warm. Like a professor who has actually read the work.',
@@ -247,7 +250,7 @@ FEEDBACK VOICE — FOLLOW EXACTLY:
 Tone: ${toneInstructions}
 Sentences in instructor_paragraph: EXACTLY ${sentences}. Not more. Not fewer. Count them.
 Voice rules: ${VOICE_RULES}
-
+${consistencyRuleBlock}
 Return ONLY valid JSON, no markdown fences:
 {
   "studentName": "from header or Unknown",
@@ -259,7 +262,10 @@ Return ONLY valid JSON, no markdown fences:
     "rating": "Accomplished|Proficient|Needs Improvement|Unacceptable",
     "strengths": "1-2 sentences addressed directly to the student (use 'you/your' or their first name once). Reference specific things they wrote or did well in this section.",
     "gaps": "1-2 sentences addressed directly to the student. Name exactly what is missing or weak — reference their specific words or sections.",
-    "suggestion": "1 concrete sentence addressed to the student telling them what to do differently. Optional if perfect."
+    "suggestion": "1 concrete sentence addressed to the student telling them what to do differently. Optional if perfect."${flagConsistency ? `,
+    "consistencyFlag": false,
+    "consistencyNote": "one sentence, only when consistencyFlag is true — name how this score and comment disagree",
+    "suggestedBand": "Accomplished|Proficient|Needs Improvement|Unacceptable — only when consistencyFlag is true, the band the comment supports"` : ''}
   }`).join(',') : ''}],
   "comments": {${rubricCriteria.length > 0 ? rubricCriteria.map(c => `"${c.name.toLowerCase().replace(/[^a-z0-9]/g,'_')}":[{"type":"positive","text":"..."},{"type":"negative","text":"...","rewrite":null}]`).join(',') : '"general":[{"type":"positive","text":"..."}]'}},
   "summary":"2-3 sentence overall assessment",
@@ -517,8 +523,13 @@ async function gradeOne(filePath, assignment, course, skipAlwaysOn=false, origin
 // ─── Routes ───────────────────────────────────────────────────────────────
 
 router.post('/batch', upload.any(), async (req, res) => {
-  const { assignmentId, courseId, tone, style, sentences } = req.body;
-  const gradeOptions = { tone: tone || 'plain-warm', style: style || 'balanced', sentences: parseInt(sentences) || 4 };
+  const { assignmentId, courseId, tone, style, sentences, flagConsistency } = req.body;
+  const gradeOptions = {
+    tone: tone || 'plain-warm',
+    style: style || 'balanced',
+    sentences: parseInt(sentences) || 4,
+    flagConsistency: flagConsistency === 'true' || flagConsistency === '1' || flagConsistency === 'on',
+  };
   const files = req.files?.filter(f => f.fieldname === 'files' || f.fieldname.startsWith('file'));
   if (!files?.length) return res.status(400).json({ error: 'No files' });
 

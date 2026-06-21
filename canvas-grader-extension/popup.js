@@ -10,6 +10,7 @@
   const modeBadge = document.getElementById('mode-badge');
   const toneSelect = document.getElementById('tone');
   const backendInput = document.getElementById('backend-url');
+  const flagConsistencyCheckbox = document.getElementById('flag-consistency');
   const standardPanel = document.getElementById('standard-mode');
   const quizPanel = document.getElementById('quiz-mode');
   const noPagePanel = document.getElementById('no-page');
@@ -57,9 +58,11 @@
   // ─── Persist settings ─────────────────────────────────────────────────
 
   function loadSettings() {
-    chrome.storage.local.get(['tone', 'backendUrl'], (data) => {
+    chrome.storage.local.get(['tone', 'backendUrl', 'flagConsistency'], (data) => {
       if (data.tone) toneSelect.value = data.tone;
       if (data.backendUrl) backendInput.value = data.backendUrl;
+      // Defaults on; only flip off when the user has explicitly stored false.
+      if (data.flagConsistency === false) flagConsistencyCheckbox.checked = false;
     });
   }
 
@@ -67,11 +70,13 @@
     chrome.storage.local.set({
       tone: toneSelect.value,
       backendUrl: backendInput.value,
+      flagConsistency: flagConsistencyCheckbox.checked,
     });
   }
 
   toneSelect.addEventListener('change', saveSettings);
   backendInput.addEventListener('change', saveSettings);
+  flagConsistencyCheckbox.addEventListener('change', saveSettings);
 
   // ─── Init: detect mode ────────────────────────────────────────────────
 
@@ -139,6 +144,7 @@
             },
           ],
           tone: toneSelect.value,
+          flagConsistency: flagConsistencyCheckbox.checked,
         }),
       });
 
@@ -150,6 +156,7 @@
       standardResult.innerHTML = `
         <div class="score-line">Score: ${r.score} / ${r.maxPoints}</div>
         <div class="feedback-line">${escapeHtml(r.feedback)}</div>
+        ${flagHtml(r)}
       `;
       setStatus('Done.');
     } catch (e) {
@@ -271,6 +278,7 @@
             },
           ],
           tone: toneSelect.value,
+          flagConsistency: flagConsistencyCheckbox.checked,
         }),
       });
 
@@ -287,6 +295,7 @@
       resultDiv.innerHTML = `
         <div class="score-line">Suggested: ${r.score} / ${r.maxPoints}</div>
         <div class="feedback-line">${escapeHtml(r.feedback)}</div>
+        ${flagHtml(r)}
         <div style="margin-top:6px">
           <button class="btn approve small approve-btn" data-i="${idx}">Approve &amp; Fill Score</button>
         </div>
@@ -376,6 +385,20 @@
     const div = document.createElement('div');
     div.textContent = str;
     return div.innerHTML;
+  }
+
+  // Warning shown before Approve when the score may not match the comment.
+  function flagHtml(r) {
+    if (!r || !r.consistencyFlag) return '';
+    return `
+      <div class="qq-flag">
+        <span class="qq-flag-icon">&#9888;</span>
+        <div>
+          <div class="qq-flag-title">Check before approving</div>
+          <div class="qq-flag-note">${escapeHtml(r.consistencyNote || "The score may not match the comment.")}</div>
+        </div>
+      </div>
+    `;
   }
 
   // ─── Boot ─────────────────────────────────────────────────────────────

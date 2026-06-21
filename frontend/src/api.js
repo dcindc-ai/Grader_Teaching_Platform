@@ -70,6 +70,7 @@ export function gradeBatch(files, assignmentId, courseId, password, onProgress, 
     if (gradeOptions.tone) fd.append('tone', gradeOptions.tone);
     if (gradeOptions.style) fd.append('style', gradeOptions.style);
     if (gradeOptions.sentences) fd.append('sentences', gradeOptions.sentences);
+    if (gradeOptions.flagConsistency != null) fd.append('flagConsistency', gradeOptions.flagConsistency ? 'true' : 'false');
     files.forEach((f, i) => { fd.append('files', f); fd.append(`name_${i}`, f.name); });
 
     fetch(`${BASE}/api/grade/batch`, {
