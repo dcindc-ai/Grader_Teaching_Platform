@@ -371,7 +371,7 @@ export default function ReviewPanel({ grade: initialGrade, assignment, password,
                     background: 'rgba(186,117,23,0.10)', borderBottom: '1px solid rgba(239,159,39,0.5)' }}>
                     <span style={{ color: 'var(--amber)', fontSize: 14, flexShrink: 0, lineHeight: 1.4 }}>⚠</span>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--amber)', marginBottom: 2 }}>Score may not match the comment</div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--amber)', marginBottom: 2 }}>Check this criterion before finalizing</div>
                       <div style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--text2)' }}>{cf.consistencyNote}</div>
                       {cf.suggestedBand && (
                         <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>Suggested band: <strong>{cf.suggestedBand}</strong></div>

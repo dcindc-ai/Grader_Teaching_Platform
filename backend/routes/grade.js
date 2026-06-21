@@ -1,4 +1,4 @@
-const { getModel, SCORING_CONSISTENCY_RULE_BANDED } = require('../config');
+const { getModel, SCORING_RUBRIC_FIDELITY_RULE, SCORING_CONSISTENCY_RULE_BANDED } = require('../config');
 const express = require('express');
 const multer = require('multer');
 const fs = require('fs');
@@ -118,7 +118,7 @@ function buildGradePrompt(assignment, course, examples, materials, gradeOptions 
   const sentences = gradeOptions.sentences || 4;
   // Scoring-consistency check: reversible, off unless the request opts in.
   const flagConsistency = !!gradeOptions.flagConsistency;
-  const consistencyRuleBlock = flagConsistency ? `\n${SCORING_CONSISTENCY_RULE_BANDED}\n` : '';
+  const consistencyRuleBlock = flagConsistency ? `\n${SCORING_RUBRIC_FIDELITY_RULE}\n\n${SCORING_CONSISTENCY_RULE_BANDED}\n` : '';
 
   const toneMap = {
     'plain-warm':    'Conversational and warm. Like a professor who has actually read the work.',

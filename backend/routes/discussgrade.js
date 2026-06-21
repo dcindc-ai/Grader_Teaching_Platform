@@ -1,4 +1,4 @@
-const { getModel, SCORING_CONSISTENCY_RULE_BANDED } = require('../config');
+const { getModel, SCORING_RUBRIC_FIDELITY_RULE, SCORING_CONSISTENCY_RULE_BANDED } = require('../config');
 const express = require('express');
 const Anthropic = require('@anthropic-ai/sdk');
 const { toFile } = Anthropic;
@@ -247,7 +247,7 @@ ${c.ratings.map(r => `  - ${r.name} (${r.points} pts): ${r.description}`).join('
   // and can't send a per-request flag, so this surface is controlled by a backend
   // switch instead: on by default, set SCORING_CONSISTENCY=off in .env to disable.
   const consistencyOn = !['off', 'false', '0', 'no'].includes(String(process.env.SCORING_CONSISTENCY || '').toLowerCase());
-  const consistencyRuleBlock = consistencyOn ? `\n\n${SCORING_CONSISTENCY_RULE_BANDED}` : '';
+  const consistencyRuleBlock = consistencyOn ? `\n\n${SCORING_RUBRIC_FIDELITY_RULE}\n\n${SCORING_CONSISTENCY_RULE_BANDED}` : '';
 
   const system = `You are ${instructorBio || 'an expert instructor'} grading a student discussion post. Read carefully before scoring anything.
 
@@ -633,18 +633,18 @@ Return ONLY valid JSON, no markdown fences:
           const msg = (cg.consistencyNote || 'This score may not match its comment.') +
             (cg.suggestedBand ? ` Suggested band: ${cg.suggestedBand}.` : '');
           if (!result.flags) result.flags = [];
-          result.flags.push({ type: 'score-comment-mismatch', criterionName: cg.criterionName, note: cg.consistencyNote || '', suggestedBand: cg.suggestedBand || '' });
+          result.flags.push({ type: 'grading-review', criterionName: cg.criterionName, note: cg.consistencyNote || '', suggestedBand: cg.suggestedBand || '' });
           if (result.gradeId) {
-            const exists = db.prepare(`SELECT id FROM grading_flags WHERE assignment_id=? AND student_name=? AND criterion_name=? AND flag_type='score-comment-mismatch' AND status='open'`)
+            const exists = db.prepare(`SELECT id FROM grading_flags WHERE assignment_id=? AND student_name=? AND criterion_name=? AND flag_type='grading-review' AND status='open'`)
               .get(assignmentId, studentName, cg.criterionName);
             if (!exists) {
               db.prepare(`INSERT INTO grading_flags (id,course_id,assignment_id,student_name,grade_id,flag_type,criterion_name,message) VALUES (?,?,?,?,?,?,?,?)`)
-                .run(uuidv4flag2(), courseId, assignmentId, studentName, result.gradeId, 'score-comment-mismatch', cg.criterionName, msg);
+                .run(uuidv4flag2(), courseId, assignmentId, studentName, result.gradeId, 'grading-review', cg.criterionName, msg);
             }
           }
         }
-        if (result.flags?.some(f => f.type === 'score-comment-mismatch')) {
-          console.log(`[discussgrade] score/comment mismatch flags: ${result.flags.filter(f => f.type === 'score-comment-mismatch').length}`);
+        if (result.flags?.some(f => f.type === 'grading-review')) {
+          console.log(`[discussgrade] grading-review flags: ${result.flags.filter(f => f.type === 'grading-review').length}`);
         }
       } catch(e) { console.warn('[discussgrade] consistency flag error:', e.message); }
     }

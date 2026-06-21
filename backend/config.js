@@ -72,10 +72,23 @@ After scoring and writing your one-sentence feedback, compare them — do not ch
 A flaw is substantive when fixing it requires reworking the answer's content, not surface wording. Benefit of the doubt still applies to ambiguity and minor omissions — never flag those.
 When the score and feedback already agree, set "consistencyFlag": false. The instructor, not you, decides whether any flagged score actually changes.`;
 
+// Rubric-fidelity rule (Rule 1) — used by the rubric-criteria graders.
+// Application-level: score each criterion on its own rubric text, not on the
+// assignment prose; credit evidence in any deliverable; flag (never silently
+// keep) a deduction that rests on something the rubric doesn't actually score.
+const SCORING_RUBRIC_FIDELITY_RULE = `RUBRIC FIDELITY CHECK — grade against the rubric, not the assignment prose.
+The rubric criterion is the scoring contract. Score each criterion ONLY on what that criterion's own rubric text actually grades.
+- When the assignment instructions require something this criterion does not actually score on, do NOT deduct for it here. You may note in the comment that the assignment also asked for it, but the number must be driven by the criterion's stated rubric language only.
+- Before deducting on any criterion, confirm the thing being penalized is something that criterion's rubric text actually grades. If it is not, do not deduct on that criterion.
+- Credit evidence found in ANY submitted deliverable, not just the narrative prose: a diagram, blueprint, table, appendix, screenshot, or attachment counts. Never mark a requirement missing only because it appears in a visual rather than in prose.
+This is not a license to inflate: a rubric-required element that is genuinely absent from every deliverable still loses points on the criterion that measures it.
+Do NOT silently keep a deduction that rests on something off-rubric. If a deduction would be based on something this criterion's rubric text does not actually score, score the criterion as the rubric supports and flag it for review: set "consistencyFlag": true and write a one-sentence "consistencyNote" naming what was almost penalized and why the rubric does not cover it. Leave "suggestedBand" empty in that case.`;
+
 module.exports = {
   getModel,
   resolveModel,
   FALLBACK,
+  SCORING_RUBRIC_FIDELITY_RULE,
   SCORING_CONSISTENCY_RULE_BANDED,
   SCORING_CONSISTENCY_RULE_POINTS,
 };
