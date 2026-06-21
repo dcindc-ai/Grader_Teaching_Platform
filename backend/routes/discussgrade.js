@@ -1,4 +1,4 @@
-const { getModel } = require('../config');
+const { getModel, SCORING_CONSISTENCY_RULE_BANDED } = require('../config');
 const express = require('express');
 const Anthropic = require('@anthropic-ai/sdk');
 const { toFile } = Anthropic;
@@ -243,6 +243,12 @@ ${c.ratings.map(r => `  - ${r.name} (${r.points} pts): ${r.description}`).join('
     }
   }
 
+  // Scoring-consistency check. The Canvas "Always On Grader" panel is external
+  // and can't send a per-request flag, so this surface is controlled by a backend
+  // switch instead: on by default, set SCORING_CONSISTENCY=off in .env to disable.
+  const consistencyOn = !['off', 'false', '0', 'no'].includes(String(process.env.SCORING_CONSISTENCY || '').toLowerCase());
+  const consistencyRuleBlock = consistencyOn ? `\n\n${SCORING_CONSISTENCY_RULE_BANDED}` : '';
+
   const system = `You are ${instructorBio || 'an expert instructor'} grading a student discussion post. Read carefully before scoring anything.
 
 ═══════════════════════════════════════════════════════════
@@ -271,7 +277,7 @@ GRADING STANDARDS:
 - Quote or paraphrase the student's actual words as evidence for every score. No generic observations.
 - If the student almost makes a key connection but misses it, say exactly what they missed.
 - A missing required element affects only the one criterion that measures it. Never apply an across-the-board penalty.
-${exampleContext ? "Use the calibration examples to anchor your scoring." : ""}`;
+${exampleContext ? "Use the calibration examples to anchor your scoring." : ""}${consistencyRuleBlock}`;
   const VOICE_RULES = `VOICE RULES — NON-NEGOTIABLE:
 No em-dashes (— or --). Use periods or commas instead.
 No filler: never write "it's worth noting", "importantly", "overall", "in conclusion", "to be fair", "that said", "having said that", "I hope this helps", "I wanted to".
@@ -353,7 +359,10 @@ Return ONLY valid JSON, no markdown fences:
       "scoringRationale": "2-3 sentences. Reference the student's actual words or specific choices. Identify exactly what is strong or what is missing. If the student almost connects a key idea but misses it, say so. If a deliverable is absent or broken, call it out directly. Be a sharp reader, not a checklist.",
       "halfPointsOk": "scores like 12.5, 13.5 are valid — use them when the work is between tiers",
       "studentComment": "${criterionCommentInstruction}",
-      "evidence": "brief quote or paraphrase from submission supporting this rating"
+      "evidence": "brief quote or paraphrase from submission supporting this rating"${consistencyOn ? `,
+      "consistencyFlag": false,
+      "consistencyNote": "one sentence, ONLY when consistencyFlag is true — name how this criterion's score and its own comment/rationale disagree",
+      "suggestedBand": "Accomplished | Proficient | Needs Improvement | Unacceptable — ONLY when consistencyFlag is true, the band the comment actually supports"` : ''}
     }
   ],
   "totalPoints": 72.5,
@@ -611,6 +620,33 @@ Return ONLY valid JSON, no markdown fences:
           }
         }
       } catch(e) { console.warn('Flag check error:', e.message); }
+    }
+
+    // Surface score/comment mismatches the model raised (scoring-consistency check).
+    // The model keeps its score and comment as written and flags the disagreement;
+    // these appear in the Flags tab so you can confirm before finalizing.
+    if (consistencyOn && result.criteriaGrades?.length) {
+      try {
+        const { v4: uuidv4flag2 } = require('uuid');
+        for (const cg of result.criteriaGrades) {
+          if (!cg.consistencyFlag) continue;
+          const msg = (cg.consistencyNote || 'This score may not match its comment.') +
+            (cg.suggestedBand ? ` Suggested band: ${cg.suggestedBand}.` : '');
+          if (!result.flags) result.flags = [];
+          result.flags.push({ type: 'score-comment-mismatch', criterionName: cg.criterionName, note: cg.consistencyNote || '', suggestedBand: cg.suggestedBand || '' });
+          if (result.gradeId) {
+            const exists = db.prepare(`SELECT id FROM grading_flags WHERE assignment_id=? AND student_name=? AND criterion_name=? AND flag_type='score-comment-mismatch' AND status='open'`)
+              .get(assignmentId, studentName, cg.criterionName);
+            if (!exists) {
+              db.prepare(`INSERT INTO grading_flags (id,course_id,assignment_id,student_name,grade_id,flag_type,criterion_name,message) VALUES (?,?,?,?,?,?,?,?)`)
+                .run(uuidv4flag2(), courseId, assignmentId, studentName, result.gradeId, 'score-comment-mismatch', cg.criterionName, msg);
+            }
+          }
+        }
+        if (result.flags?.some(f => f.type === 'score-comment-mismatch')) {
+          console.log(`[discussgrade] score/comment mismatch flags: ${result.flags.filter(f => f.type === 'score-comment-mismatch').length}`);
+        }
+      } catch(e) { console.warn('[discussgrade] consistency flag error:', e.message); }
     }
 
     res.json(result);

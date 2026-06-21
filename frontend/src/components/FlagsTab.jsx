@@ -6,6 +6,7 @@ const BASE = import.meta.env.PROD ? '' : 'http://localhost:3001';
 const FLAG_CONFIG = {
   'dnp-violation':          { label: 'DO NOT PENALIZE violation', color: '#dc2626', bg: 'rgba(220,38,38,0.07)', icon: '⚠' },
   'correction-propagation': { label: 'Needs same correction',     color: '#d97706', bg: 'rgba(217,119,6,0.07)',  icon: '↻' },
+  'score-comment-mismatch': { label: 'Score / comment mismatch',  color: '#b45309', bg: 'rgba(186,117,23,0.08)', icon: '⚠' },
 };
 
 export default function FlagsTab({ course, password }) {
