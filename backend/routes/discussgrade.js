@@ -248,6 +248,12 @@ ${c.ratings.map(r => `  - ${r.name} (${r.points} pts): ${r.description}`).join('
   // switch instead: on by default, set SCORING_CONSISTENCY=off in .env to disable.
   const consistencyOn = !['off', 'false', '0', 'no'].includes(String(process.env.SCORING_CONSISTENCY || '').toLowerCase());
   const consistencyRuleBlock = consistencyOn ? `\n\n${SCORING_RUBRIC_FIDELITY_RULE}\n\n${SCORING_CONSISTENCY_RULE_BANDED}` : '';
+  // Diagnostic: confirms which rule version this running process actually loaded.
+  // "flag-only loaded: true" means the non-harsh rewrite is active; "false" means
+  // the process is running stale code and needs a restart.
+  console.log('[discussgrade] scoring rules:', consistencyOn ? 'ON' : 'OFF',
+    '| flag-only loaded:', SCORING_CONSISTENCY_RULE_BANDED.includes('FLAG-ONLY'),
+    '| rubric-fidelity loaded:', typeof SCORING_RUBRIC_FIDELITY_RULE === 'string' && SCORING_RUBRIC_FIDELITY_RULE.includes('RUBRIC FIDELITY'));
 
   const system = `You are ${instructorBio || 'an expert instructor'} grading a student discussion post. Read carefully before scoring anything.
 
