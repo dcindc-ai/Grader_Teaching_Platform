@@ -7,6 +7,7 @@ const { toFile } = Anthropic;
 const FILES_BETA = ['files-api-2025-04-14'];
 const { v4: uuidv4 } = require('uuid');
 const { db } = require('../db');
+const { parseRubricCsv } = require('../parseRubricCsv');
 const { refetchAndStoreRubricCriteria } = require('./canvasimport');
 const router = express.Router();
 
@@ -50,75 +51,14 @@ function scrubFormatMentions(text) {
 
 router.post('/parse-rubric', (req, res) => {
   const { csv } = req.body;
-  if (!csv) return res.status(400).json({ error: 'csv required' });
-
   try {
-    // Parse CSV properly handling quoted fields with embedded commas/newlines
-    function parseCSV(text) {
-      const rows = [];
-      let row = [], field = '', inQuote = false;
-      for (let i = 0; i < text.length; i++) {
-        const ch = text[i], next = text[i+1];
-        if (ch === '"') {
-          if (inQuote && next === '"') { field += '"'; i++; }
-          else inQuote = !inQuote;
-        } else if (ch === ',' && !inQuote) {
-          row.push(field.trim()); field = '';
-        } else if ((ch === '\n' || ch === '\r') && !inQuote) {
-          if (ch === '\r' && next === '\n') i++;
-          row.push(field.trim()); field = '';
-          if (row.some(f => f)) rows.push(row);
-          row = [];
-        } else {
-          field += ch;
-        }
-      }
-      if (field || row.length) { row.push(field.trim()); if (row.some(f => f)) rows.push(row); }
-      return rows;
-    }
-
-    const rows = parseCSV(csv);
-    if (rows.length < 2) return res.status(400).json({ error: 'CSV has no data rows' });
-
-    // Expected columns: Criterion, Points, Accomplished, Accomplished Points,
-    //                   Proficient, Proficient Points, Needs Improvement, Needs Improvement Points,
-    //                   Unacceptable, Unacceptable Points
-    const RATING_NAMES = ['Accomplished', 'Proficient', 'Needs Improvement', 'Unacceptable'];
-    const criteria = [];
-
-    for (let i = 1; i < rows.length; i++) {
-      const f = rows[i];
-      const criteriaName = f[0]?.trim();
-      if (!criteriaName) continue;
-
-      // Ratings at: [2,3], [4,5], [6,7], [8,9] = (description, points)
-      const ratings = [];
-      for (let r = 0; r < RATING_NAMES.length; r++) {
-        const descIdx = 2 + r * 2;
-        const ptsIdx = 3 + r * 2;
-        const desc = f[descIdx]?.trim();
-        const pts = parseFloat(f[ptsIdx]);
-        if (desc && !isNaN(pts)) {
-          ratings.push({ name: RATING_NAMES[r], description: desc, points: pts });
-        }
-      }
-
-      if (ratings.length > 0) {
-        criteria.push({
-          id: uuidv4(),
-          name: criteriaName,
-          maxPoints: Math.max(...ratings.map(r => r.points)),
-          ratings
-        });
-      }
-    }
-
-    if (!criteria.length) return res.status(400).json({ error: 'No criteria found — check CSV format' });
-
-    const totalMax = criteria.reduce((a, c) => a + c.maxPoints, 0);
+    // Header-driven parser (backend/parseRubricCsv.js) — robust to the differing
+    // Canvas export column layouts. Throws Error with a user-readable message.
+    const { criteria, totalMax } = parseRubricCsv(csv);
     res.json({ criteria, totalMax });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    const userError = /required|no data rows|No criteria|No rating-points|check the CSV/i.test(e.message);
+    res.status(userError ? 400 : 500).json({ error: e.message });
   }
 });
 
