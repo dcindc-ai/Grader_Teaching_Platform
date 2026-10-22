@@ -8,6 +8,7 @@ const FILES_BETA = ['files-api-2025-04-14'];
 const { v4: uuidv4 } = require('uuid');
 const { db } = require('../db');
 const { parseRubricCsv } = require('../parseRubricCsv');
+const { scrubAiTells, scrubFields } = require('../lib/textVoice');
 const { refetchAndStoreRubricCriteria } = require('./canvasimport');
 const router = express.Router();
 
@@ -173,14 +174,29 @@ Rating levels:
 ${c.ratings.map(r => `  - ${r.name} (${r.points} pts): ${r.description}`).join('\n')}`
   ).join('\n');
 
-  // Load calibration examples for this assignment
+  // Load calibration examples for this assignment. Pull a BALANCED spread across
+  // quality tiers, not just the most recent — otherwise the newest examples (often
+  // all "good") anchor the model high and undo strict grading. Round-robin across
+  // good/borderline/weak so the model sees both strong and weak reference points.
   let exampleContext = '';
   if (assignmentId) {
-    const examples = db.prepare('SELECT * FROM examples WHERE assignment_id=? ORDER BY created_at DESC LIMIT 5').all(assignmentId);
-    if (examples.length) {
-      exampleContext = '\n\nCALIBRATION EXAMPLES (previously graded by this instructor):\n' +
-        examples.map(e => `Student: ${e.student_name}, Score: ${e.score}/${e.quality === 'good' ? 'strong' : 'weak'} example\n${(e.content || '').slice(0, 400)}`).join('\n---\n');
+    const pool = db.prepare('SELECT * FROM examples WHERE assignment_id=? ORDER BY created_at DESC').all(assignmentId);
+    const byQ = { good: [], borderline: [], weak: [] };
+    for (const e of pool) (byQ[e.quality] || (byQ[e.quality] = [])).push(e);
+    const tiers = ['good', 'borderline', 'weak'].filter(t => byQ[t] && byQ[t].length);
+    const examples = [];
+    const MAX_EXAMPLES = 6;
+    for (let i = 0; examples.length < MAX_EXAMPLES && tiers.some(t => byQ[t].length); i++) {
+      const t = tiers[i % tiers.length];
+      if (byQ[t].length) examples.push(byQ[t].shift());
     }
+    if (examples.length) {
+      const qLabel = q => ({ good: 'STRONG example', weak: 'WEAK example', borderline: 'BORDERLINE example' }[q] || `${q || 'unrated'} example`);
+      exampleContext = '\n\nCALIBRATION EXAMPLES — real submissions this instructor already scored, spanning strong to weak. Use them to anchor your point values:\n' +
+        examples.map(e => `[Instructor score: ${e.score} — ${qLabel(e.quality)}]\n${(e.content || '').slice(0, 500)}`).join('\n---\n');
+    }
+    const mix = examples.reduce((m, e) => (m[e.quality] = (m[e.quality] || 0) + 1, m), {});
+    console.log(`[discussgrade] calibration examples injected: ${examples.length} of ${pool.length}`, mix);
   }
 
   // Scoring-consistency check. The Canvas "Always On Grader" panel is external
@@ -194,6 +210,43 @@ ${c.ratings.map(r => `  - ${r.name} (${r.points} pts): ${r.description}`).join('
   console.log('[discussgrade] scoring rules:', consistencyOn ? 'ON' : 'OFF',
     '| flag-only loaded:', SCORING_CONSISTENCY_RULE_BANDED.includes('FLAG-ONLY'),
     '| rubric-fidelity loaded:', typeof SCORING_RUBRIC_FIDELITY_RULE === 'string' && SCORING_RUBRIC_FIDELITY_RULE.includes('RUBRIC FIDELITY'));
+
+  // Honor the assignment's strictness dial and target average. Previously this
+  // surface ignored both fields, so a "strict" assignment graded no differently
+  // than a lenient one — every submission drifted to the top rating level. This
+  // does NOT invent extra harshness: it just makes the rubric's own lower rating
+  // levels get used when the work matches them, and aims for the instructor's target.
+  const strictness = String(assignmentRecord?.grading_strictness || 'standard').toLowerCase();
+  const targetAvg = Number(assignmentRecord?.target_avg) || null;
+  const rubricMaxTotal = rubricCriteria.reduce((s, c) => s + (Number(c.maxPoints) || 0), 0) || Number(assignmentRecord?.max_score) || 0;
+  const strictnessLine = {
+    strict: "GRADING STRICTNESS: STRICT — apply the rubric to the letter. For each criterion, choose the rating level whose description the work ACTUALLY meets, and assign that level's points. Do not round up to a higher level for work that only partly meets it. When your own rationale names a genuine gap in a criterion, the score must sit at the lower rating level that gap corresponds to — a substantive gap you have named cannot also earn the top level. Reserve the top level for work that fully meets its description.",
+    standard: "GRADING STRICTNESS: STANDARD — match each criterion to the rating level it earns. Award the top level only when the work meets that level's full description; use the lower defined levels when it does not.",
+    lenient: "GRADING STRICTNESS: LENIENT — give the benefit of the doubt. Reward effort and correct direction even when execution is imperfect, while still selecting from the rubric's defined rating levels.",
+  }[strictness] || null;
+  const targetLine = (targetAvg && rubricMaxTotal)
+    ? `\nTARGET AVERAGE: this instructor expects a class average near ${targetAvg} out of ${rubricMaxTotal} on this assignment. Score each submission on its actual quality against the rubric — strong work should still score high — but do not cluster every student at the ceiling. If your scores would put essentially everyone at or near full marks, re-read the rubric's middle rating levels and check you are not rounding partial work up.`
+    : '';
+  // Top-of-scale rule: the maximum means "exceptional, nothing left to improve" and
+  // should be rare. Strong-but-improvable work tops out just under the ceiling. This
+  // is proportional to the assignment max, so it works on any point scale. A perfect
+  // score is allowed but never the default.
+  const scoreCap = Number(assignmentRecord?.score_cap);
+  const hasCap = Number.isFinite(scoreCap) && scoreCap > 0 && rubricMaxTotal && scoreCap < rubricMaxTotal;
+  let topOfScaleLine = '';
+  if (hasCap) {
+    // Instructor set an explicit hard ceiling for this assignment.
+    topOfScaleLine = `\nMAXIMUM SCORE — ABSOLUTE CAP: this instructor has set a hard ceiling of ${scoreCap} out of ${rubricMaxTotal} for this assignment. Do NOT award a total above ${scoreCap} to any submission, no matter how strong. ${scoreCap} is the maximum score possible here — treat it as if it were the top of the scale. Reserve ${scoreCap} itself for excellent work; strong work that still has room to grow should land below it. When you name a real area to improve, let the criterion it touches sit below its top value so the total stays at or under ${scoreCap}.`;
+  } else if (rubricMaxTotal) {
+    // No explicit cap: proportional "perfect is rare" default (~147.5 on a 150 scale).
+    const normalCeiling = Math.round((rubricMaxTotal - rubricMaxTotal * 0.0167) * 2) / 2;
+    topOfScaleLine = `\nTOP OF THE SCALE: almost every submission has a next level it could reach, so a perfect score is not a starting point. For strong, polished work that still has anywhere to grow, the top realistic total is ${normalCeiling} out of ${rubricMaxTotal}. Treat ${normalCeiling} as the normal ceiling and do not exceed it unless the work is genuinely exceptional. Totals between ${normalCeiling} and ${rubricMaxTotal} are reserved for exceptional work only, and the maximum (${rubricMaxTotal}) itself should be INCREDIBLY RARE — a submission with truly nothing left to improve. Never award ${rubricMaxTotal} by default and never park strong-but-improvable work at ${rubricMaxTotal}. Concretely: when you name a real area to improve, let the criterion it touches sit below its top value so the total lands at or under ${normalCeiling}.`;
+  }
+  // This block describes normal rubric application (choosing the earned rating
+  // level). It is NOT the flag-only consistency check below — using a lower rating
+  // level the work genuinely matches is correct grading, not a harshness adjustment.
+  const strictnessBlock = strictnessLine ? `\n\n${strictnessLine}${targetLine}${topOfScaleLine}` : '';
+  console.log('[discussgrade] strictness:', strictness, '| target:', targetAvg, '/', rubricMaxTotal, '| scoreCap:', hasCap ? scoreCap : 'none', '| topOfScale:', !!topOfScaleLine);
 
   const system = `You are ${instructorBio || 'an expert instructor'} grading a student discussion post. Read carefully before scoring anything.
 
@@ -222,8 +275,8 @@ GRADING STANDARDS:
 - Never score a criterion below its lowest defined rating level. That lowest level is the floor for that criterion.
 - Quote or paraphrase the student's actual words as evidence for every score. No generic observations.
 - If the student almost makes a key connection but misses it, say exactly what they missed.
-- A missing required element affects only the one criterion that measures it. Never apply an across-the-board penalty.
-${exampleContext ? "Use the calibration examples to anchor your scoring." : ""}${consistencyRuleBlock}`;
+- A missing required element affects only the one criterion that measures it. Never apply an across-the-board penalty.${strictnessBlock}
+${exampleContext}${exampleContext ? "\nAnchor your scoring to these examples: match your point values to how this instructor scored comparable work above. If your score for a criterion would differ sharply from the pattern the examples establish, re-check it against the rubric." : ""}${consistencyRuleBlock}`;
   const VOICE_RULES = `VOICE RULES — NON-NEGOTIABLE:
 No em-dashes (— or --). Use periods or commas instead.
 No filler: never write "it's worth noting", "importantly", "overall", "in conclusion", "to be fair", "that said", "having said that", "I hope this helps", "I wanted to".
@@ -328,6 +381,34 @@ Return ONLY valid JSON, no markdown fences:
     console.log('[discussgrade] screenshotData received:', screenshotData ? screenshotData.length + ' chars' : 'NONE');
     console.log('[discussgrade] attachedFiles received:', allFiles.length);
 
+    // Add an image to the request. Small images inline as base64; large ones go through
+    // the Files API (same fix used for large PDFs) so the request never blows the API's
+    // size limit — the cause of the 500 on image-heavy PowerPoint submissions.
+    const MAX_INLINE_IMAGE_BYTES = 3 * 1024 * 1024;      // one image over ~3MB -> Files API
+    const MAX_TOTAL_INLINE_BYTES = 8 * 1024 * 1024;      // once inline total passes ~8MB, route the rest too
+    let inlineImageBytes = 0;
+    async function addImagePart(parts, base64Data, mediaType, label) {
+      const approxBytes = Math.floor((base64Data || '').length * 0.75);
+      if (approxBytes > MAX_INLINE_IMAGE_BYTES || inlineImageBytes + approxBytes > MAX_TOTAL_INLINE_BYTES) {
+        try {
+          const buf = Buffer.from(base64Data, 'base64');
+          const ext = (mediaType.split('/')[1] || 'png').replace('jpeg', 'jpg');
+          const uploaded = await client.beta.files.upload({
+            file: await toFile(buf, `${(label || 'image').replace(/[^a-z0-9._-]/gi, '_')}.${ext}`, { type: mediaType }),
+            betas: FILES_BETA,
+          });
+          uploadedFileIds.push(uploaded.id);
+          parts.push({ type: 'image', source: { type: 'file', file_id: uploaded.id } });
+          console.log('[discussgrade] Large image via Files API:', label, `${(approxBytes/1024/1024).toFixed(1)}MB ->`, uploaded.id);
+          return;
+        } catch (e) {
+          console.warn('[discussgrade] Image Files API upload failed, inlining instead:', e.message);
+        }
+      }
+      inlineImageBytes += approxBytes;
+      parts.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data: base64Data } });
+    }
+
     if (hasFiles || hasScreenshot) {
       const parts = [];
       parts.push({ type: 'text', text: 'IMPORTANT: The attached files are part of the student submission. Examine ALL attached files BEFORE scoring any criterion. A table, image, or diagram showing original vs refined prompts counts as satisfying the before/after prompt requirement — even if the assignment says "code blocks". A screenshot of a prompt comparison table IS a valid before/after prompt submission. If a deliverable exists in any attached file in any format, do NOT penalize for it being missing. Only mark a deliverable missing if it is absent from both the text submission AND all attached files.' });
@@ -355,7 +436,7 @@ Return ONLY valid JSON, no markdown fences:
             parts.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } });
           }
         } else if (mediaType && mediaType.startsWith('image/')) {
-          parts.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } });
+          await addImagePart(parts, base64, mediaType, file.name);
           console.log('[discussgrade] Including image:', file.name);
         } else if (file.name && (file.name.endsWith('.pptx') || file.name.endsWith('.ppt'))) {
           // Extract text AND images from PowerPoint
@@ -411,7 +492,7 @@ Return ONLY valid JSON, no markdown fences:
               const ext = imgPath.split('.').pop().toLowerCase();
               const imgMediaType = (ext === 'jpg' || ext === 'jpeg') ? 'image/jpeg' :
                                    ext === 'png' ? 'image/png' : 'image/jpeg';
-              parts.push({ type: 'image', source: { type: 'base64', media_type: imgMediaType, data: imgData } });
+              await addImagePart(parts, imgData, imgMediaType, imgPath.split('/').pop());
               console.log('[discussgrade] Including PPTX image:', imgPath);
             }
           } catch(e) {
@@ -443,7 +524,7 @@ Return ONLY valid JSON, no markdown fences:
               const ext = imgPath.split('.').pop().toLowerCase();
               const imgMediaType = (ext === 'jpg' || ext === 'jpeg') ? 'image/jpeg' :
                                    ext === 'png' ? 'image/png' : 'image/jpeg';
-              parts.push({ type: 'image', source: { type: 'base64', media_type: imgMediaType, data: imgData } });
+              await addImagePart(parts, imgData, imgMediaType, imgPath.split('/').pop());
               console.log('[discussgrade] Including embedded image from Word doc:', imgPath);
             }
           } catch(e) {
@@ -457,7 +538,7 @@ Return ONLY valid JSON, no markdown fences:
       if (!hasFiles && hasScreenshot) {
         const base64Data = screenshotData.split(',')[1];
         const mediaType = screenshotData.split(';')[0].split(':')[1];
-        parts.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data: base64Data } });
+        await addImagePart(parts, base64Data, mediaType, 'screenshot');
         console.log('[discussgrade] Including auto-screenshot');
       }
 
@@ -465,6 +546,12 @@ Return ONLY valid JSON, no markdown fences:
       messageContent = parts;
     } else {
       messageContent = prompt;
+    }
+
+    // Log approximate request size — the inlined portion is what risks the API size limit.
+    if (Array.isArray(messageContent)) {
+      const imgCount = messageContent.filter(p => p.type === 'image').length;
+      console.log(`[discussgrade] request parts: ${messageContent.length} | images: ${imgCount} | inline image payload: ${(inlineImageBytes/1024/1024).toFixed(1)}MB | files via API: ${uploadedFileIds.length}`);
     }
 
     const createParams = {
@@ -497,6 +584,12 @@ Return ONLY valid JSON, no markdown fences:
     result.criteriaGrades?.forEach(cg => {
       if (cg.studentComment) cg.studentComment = scrubFormatMentions(cg.studentComment);
     });
+
+    // Deterministic voice cleanup: guarantee no em-dashes, colons, or semicolons in any
+    // generated prose the student sees, regardless of what the model returned. Leave
+    // `evidence` alone — it may quote the student's own words verbatim.
+    scrubFields(result, ['instructorParagraph', 'overallSummary']);
+    scrubFields(result.criteriaGrades, ['studentComment', 'scoringRationale', 'consistencyNote']);
 
     // Save to grades table if assignment provided
     if (assignmentId && courseId) {
@@ -597,8 +690,13 @@ Return ONLY valid JSON, no markdown fences:
 
     res.json(result);
   } catch (e) {
-    console.error('[discussgrade] GRADING ERROR:', e.message, e.stack);
-    res.status(500).json({ error: e.message });
+    // Surface the underlying Anthropic API status/type when present, so a bare "500"
+    // in the UI becomes an actionable message (e.g. request_too_large, overloaded).
+    const apiStatus = e.status || e.statusCode;
+    const apiType = e.error?.error?.type || e.error?.type;
+    console.error('[discussgrade] GRADING ERROR:', apiStatus || '', apiType || '', e.message, e.stack);
+    const detail = [apiStatus && `HTTP ${apiStatus}`, apiType].filter(Boolean).join(' ');
+    res.status(500).json({ error: detail ? `${detail}: ${e.message}` : e.message });
   }
 });
 
@@ -657,7 +755,7 @@ Write the instructor feedback paragraph with the specified tone, length, and dir
 Return ONLY the paragraph text, nothing else.`
       }]
     });
-    const paragraph = resp.content.find(b => b.type === 'text')?.text?.trim() || '';
+    const paragraph = scrubAiTells(resp.content.find(b => b.type === 'text')?.text?.trim() || '');
     res.json({ paragraph });
   } catch (e) {
     res.status(500).json({ error: e.message });

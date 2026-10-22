@@ -1,4 +1,5 @@
 const { getModel, SCORING_RUBRIC_FIDELITY_RULE, SCORING_CONSISTENCY_RULE_BANDED } = require('../config');
+const { scrubAiTells, scrubFields } = require('../lib/textVoice');
 const express = require('express');
 const multer = require('multer');
 const fs = require('fs');
@@ -110,6 +111,54 @@ const upload = multer({ dest: './uploads/', limits: { fileSize: 25 * 1024 * 1024
 
 const DIMS = ['clarity','logic','structure','tone','style'];
 
+// ─── Parse a plain-text rubric into structured criteria ──────────────────
+// Handles the Canvas-exported layout where each criterion is:
+//   CRITERION 1: Name (Pillar 1)
+//   Points: 25
+//   Accomplished (25 to >22.5 pts)  <description...>
+//   Proficient   (22.5 to >20.0 pts) ...
+// as well as the legacy inline form "CRITERION 1: Name (25 pts)".
+// Returns [{ name, maxPoints, ratings:[{name, points, description}] }].
+function parseRubricText(rubric) {
+  if (!rubric) return [];
+  const blocks = rubric
+    .split(/(?=^CRITERION\s+\d+\s*:)/im)
+    .filter(b => /^CRITERION\s+\d+\s*:/im.test(b));
+  const criteria = [];
+  for (const block of blocks) {
+    const nameLine = block.match(/^CRITERION\s+\d+\s*:\s*(.+?)\s*$/im);
+    if (!nameLine) continue;
+    const rawName = nameLine[1].trim();
+
+    // Locate each rating-level label line, then take its description as the text
+    // up to the next label (positional pairing — no fragile lookaheads).
+    const ratingRe = /^([A-Za-z][A-Za-z /&'-]*?)\s*\(\s*(\d+(?:\.\d+)?)\s*(?:to\s*>?\s*\d+(?:\.\d+)?\s*)?pts?\s*\)[ \t]*$/gim;
+    const labels = [];
+    let m;
+    while ((m = ratingRe.exec(block)) !== null) {
+      labels.push({ name: m[1].trim(), points: parseFloat(m[2]), descStart: m.index + m[0].length, labelStart: m.index });
+    }
+    const ratings = labels.map((lab, i) => {
+      const end = i + 1 < labels.length ? labels[i + 1].labelStart : block.length;
+      const description = block.slice(lab.descStart, end).replace(/={3,}/g, '').trim().replace(/\s+/g, ' ').slice(0, 400);
+      return { name: lab.name, points: lab.points, description };
+    });
+
+    // maxPoints: "Points: NN" line, else inline "(NN pts)" in the name, else the
+    // highest rating value, else 1.
+    const ptsLine = block.match(/^Points?\s*:\s*(\d+(?:\.\d+)?)/im);
+    const inlineName = rawName.match(/\((\d+(?:\.\d+)?)\s*pts?\)/i);
+    let maxPoints = 1;
+    if (ptsLine) maxPoints = parseFloat(ptsLine[1]);
+    else if (inlineName) maxPoints = parseFloat(inlineName[1]);
+    else if (ratings.length) maxPoints = Math.max(...ratings.map(r => r.points));
+
+    const name = rawName.replace(/\s*\((\d+(?:\.\d+)?)\s*pts?\)\s*$/i, '').trim();
+    if (name) criteria.push({ name, maxPoints, ratings });
+  }
+  return criteria;
+}
+
 // ─── Build grading system prompt ─────────────────────────────────────────
 
 function buildGradePrompt(assignment, course, examples, materials, gradeOptions = {}) {
@@ -119,6 +168,20 @@ function buildGradePrompt(assignment, course, examples, materials, gradeOptions 
   // Scoring-consistency check: reversible, off unless the request opts in.
   const flagConsistency = !!gradeOptions.flagConsistency;
   const consistencyRuleBlock = flagConsistency ? `\n${SCORING_RUBRIC_FIDELITY_RULE}\n\n${SCORING_CONSISTENCY_RULE_BANDED}\n` : '';
+
+  // Top-of-scale rule: the maximum means "exceptional, nothing left to improve" and
+  // should be rare. Strong-but-improvable work tops out just below the ceiling.
+  // Proportional to the assignment max so it works on any point scale.
+  const maxScore = Number(assignment.max_score) || 0;
+  const scoreCap = Number(assignment.score_cap);
+  const hasCap = Number.isFinite(scoreCap) && scoreCap > 0 && maxScore && scoreCap < maxScore;
+  let topOfScaleLine = '';
+  if (hasCap) {
+    topOfScaleLine = `- MAXIMUM SCORE — ABSOLUTE CAP: this instructor has set a hard ceiling of ${scoreCap} out of ${maxScore} for this assignment. Do NOT award a total above ${scoreCap} to any submission, no matter how strong. ${scoreCap} is the maximum score possible here — treat it as the top of the scale. Reserve ${scoreCap} itself for excellent work; strong work that still has room to grow should land below it. When you name a real area to improve, let the criterion it touches sit below its top value so the total stays at or under ${scoreCap}.`;
+  } else if (maxScore) {
+    const normalCeiling = Math.round((maxScore - maxScore * 0.0167) * 2) / 2; // ~147.5 on a 150 scale
+    topOfScaleLine = `- TOP OF THE SCALE: almost every submission has a next level it could reach, so a perfect score is not a starting point. For strong, polished work that still has anywhere to grow, the top realistic total is ${normalCeiling} out of ${maxScore}. Treat ${normalCeiling} as the normal ceiling and do not exceed it unless the work is genuinely exceptional. Totals between ${normalCeiling} and ${maxScore} are reserved for exceptional work only, and the maximum (${maxScore}) itself should be INCREDIBLY RARE — a submission with truly nothing left to improve. Never award ${maxScore} by default and never park strong-but-improvable work at ${maxScore}. When you name a real area to improve, let the criterion it touches sit below its top value so the total lands at or under ${normalCeiling}.`;
+  }
 
   const toneMap = {
     'plain-warm':    'Conversational and warm. Like a professor who has actually read the work.',
@@ -146,19 +209,11 @@ function buildGradePrompt(assignment, course, examples, materials, gradeOptions 
     if (assignment.rubric_criteria) rubricCriteria = JSON.parse(assignment.rubric_criteria);
   } catch(e) {}
 
-  // If no structured criteria, try to parse from text rubric (CRITERION N: ... format)
+  // If no structured criteria, parse them from the text rubric (CRITERION N: ... format).
+  // This recovers the full per-criterion band structure so the grader scores each
+  // criterion against its rating levels instead of returning one holistic total.
   if (rubricCriteria.length === 0 && assignment.rubric) {
-    const criterionMatches = assignment.rubric.match(/CRITERION\s+\d+:\s*([^(]+)\((\d+(?:\.\d+)?)\s*pts?\)/gi);
-    if (criterionMatches) {
-      rubricCriteria = criterionMatches.map(m => {
-        const nameMatch = m.match(/CRITERION\s+\d+:\s*([^(]+)\(/i);
-        const ptsMatch = m.match(/\((\d+(?:\.\d+)?)\s*pts?\)/i);
-        return {
-          name: (nameMatch?.[1] || '').trim(),
-          maxPoints: parseFloat(ptsMatch?.[1] || 1)
-        };
-      }).filter(c => c.name);
-    }
+    rubricCriteria = parseRubricText(assignment.rubric);
   }
 
   // Build rubric text from criteria or fall back to stored rubric text
@@ -201,13 +256,14 @@ ${assignment.rubric}
 STRICTNESS (1=lenient, 5=strict): ${sliderStr}
 
 GRADING TARGET:
-- Target class average: \${assignment.target_avg || 4.5} / \${assignment.max_score} points
-- Strictness mode: \${assignment.grading_strictness || 'standard'}
-\${assignment.grading_strictness === 'lenient' ? '- Be generous with partial credit. Reward effort and correct direction even if execution is imperfect.' : ''}
-\${assignment.grading_strictness === 'strict' ? '- Hold students to a high standard. Partial credit only for work that is substantively correct. Missing elements are deductions.' : ''}
-\${assignment.grading_strictness === 'standard' ? '- Grade fairly. Full credit for work that meets all requirements. Partial credit for work that mostly meets requirements.' : ''}
-- If this student\'s work would place the class average significantly above or below the target, adjust scores to reflect actual quality more precisely.
-\${matStr}
+- Target class average: ${assignment.target_avg || Math.round(assignment.max_score * 0.75)} / ${assignment.max_score} points
+- Strictness mode: ${assignment.grading_strictness || 'standard'}
+${assignment.grading_strictness === 'lenient' ? '- Be generous with partial credit. Reward effort and correct direction even if execution is imperfect.' : ''}
+${assignment.grading_strictness === 'strict' ? '- Hold students to a high standard. Partial credit only for work that is substantively correct. Missing elements are deductions. Reserve the top rating level for work that genuinely earns it; when a criterion has a real gap, score the level the work actually matches, not the one above it.' : ''}
+${assignment.grading_strictness === 'standard' ? '- Grade fairly. Full credit for work that meets all requirements. Partial credit for work that mostly meets requirements.' : ''}
+- If this student's work would place the class average significantly above or below the target, adjust scores to reflect actual quality more precisely.
+${topOfScaleLine}
+${matStr}
 
 GRADING PHILOSOPHY (how this instructor actually grades):
 ${course.institution && course.institution.toLowerCase().includes('maryland') ? `
@@ -349,7 +405,7 @@ Return ONLY valid JSON, no fences:
     const parsed = JSON.parse(text.replace(/```json\n?|```/g, '').trim());
     return {
       weakArea: targetArea,
-      feedbackSentences: parsed.feedbackSentences || '',
+      feedbackSentences: scrubAiTells(parsed.feedbackSentences || ''),
       links: parsed.links || []
     };
   } catch (e) {
@@ -506,6 +562,16 @@ async function gradeOne(filePath, assignment, course, skipAlwaysOn=false, origin
       gaps: (cf.gaps || '').replace(/\bthe student\b/gi, 'you').replace(/\bthe student's\b/gi, 'your'),
       suggestion: (cf.suggestion || '').replace(/\bthe student\b/gi, 'you').replace(/\bthe student's\b/gi, 'your'),
     }));
+  }
+
+  // Deterministic voice cleanup: guarantee no em-dashes, colons, or semicolons in any
+  // generated prose the student sees, whatever the model returned.
+  scrubFields(gradeResult, ['instructor_paragraph', 'summary', 'key_strength', 'key_improvement']);
+  scrubFields(gradeResult.criteriaFeedback, ['strengths', 'gaps', 'suggestion', 'consistencyNote']);
+  if (gradeResult.comments && typeof gradeResult.comments === 'object') {
+    for (const arr of Object.values(gradeResult.comments)) {
+      scrubFields(arr, ['text', 'rewrite']);
+    }
   }
 
   // Generate Always-On (skipped in batch mode to save tokens)
