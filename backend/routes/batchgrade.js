@@ -1,4 +1,4 @@
-const { getModel } = require('../config');
+const { getModel, gradingParams } = require('../config');
 const express = require('express');
 const router = express.Router();
 const { db, parseGrade } = require('../db');
@@ -219,7 +219,7 @@ Return ONLY valid JSON:
     db.prepare('UPDATE batch_grades SET status=? WHERE id=?').run('grading', batchId);
 
     const resp = await client.messages.create({
-      model: getModel(),
+      ...gradingParams(),
       max_tokens: 4000,
       system,
       messages: [{ role: 'user', content: prompt }]

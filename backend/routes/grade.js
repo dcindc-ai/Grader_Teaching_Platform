@@ -1,4 +1,4 @@
-const { getModel, SCORING_RUBRIC_FIDELITY_RULE, SCORING_CONSISTENCY_RULE_BANDED } = require('../config');
+const { getModel, gradingParams, SCORING_RUBRIC_FIDELITY_RULE, SCORING_CONSISTENCY_RULE_BANDED } = require('../config');
 const { scrubAiTells, scrubFields } = require('../lib/textVoice');
 const express = require('express');
 const multer = require('multer');
@@ -544,7 +544,7 @@ async function gradeOne(filePath, assignment, course, skipAlwaysOn=false, origin
   }
 
   const resp = await client.messages.create({
-    model: getModel(),
+    ...gradingParams(),
     max_tokens: 2000,
     system: buildGradePrompt(assignment, course, examples, materials, gradeOptions),
     messages: [{ role: 'user', content: gradeMessageContent }]

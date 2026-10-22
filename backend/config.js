@@ -3,7 +3,7 @@
 // Model selection, single source of truth:
 //   - If ANTHROPIC_MODEL is set in .env, that exact model is pinned (escape hatch).
 //   - Otherwise, on startup we query Anthropic's Models API and auto-select the
-//     newest claude-opus-* model (today: claude-opus-4-8; auto-upgrades to the
+//     newest claude-opus-* model (today: claude-opus-5-5; auto-upgrades to the
 //     next Opus when released).
 //   - If that lookup fails (offline, API down), we fall back to FALLBACK so the
 //     grader still boots and grades instead of hard-failing.
@@ -12,7 +12,7 @@
 // the auto-selected value is filled in asynchronously during startup.
 const Anthropic = require('@anthropic-ai/sdk');
 
-const FALLBACK = 'claude-opus-4-8';
+const FALLBACK = 'claude-opus-5-5';
 
 // Current effective model. Starts as the pin (if any) or the fallback, then gets
 // overwritten by resolveModel() once the API lookup completes.
@@ -84,10 +84,52 @@ The rubric criterion is the scoring contract. Score each criterion ONLY on what 
 This is not a license to inflate: a rubric-required element that is genuinely absent from every deliverable still loses points on the criterion that measures it.
 Do NOT silently keep a deduction that rests on something off-rubric. If a deduction would be based on something this criterion's rubric text does not actually score, score the criterion as the rubric supports and flag it for review: set "consistencyFlag": true and write a one-sentence "consistencyNote" naming what was almost penalized and why the rubric does not cover it. Leave "suggestedBand" empty in that case.`;
 
+// ─── Reasoning effort ────────────────────────────────────────────────────
+// Claude Opus 5.5 defaults to "medium" effort — one level below the "high"
+// that Opus 5 and 4.8 used, so the auto-upgrade to 5.5 quietly reduced
+// reasoning depth. Scoring calls weigh a comment against a score and apply
+// the rubric-fidelity and consistency rules above, so they run at "high".
+//
+// ANTHROPIC_EFFORT in .env overrides the level (low|medium|high|xhigh|max).
+// Set it to "off" to omit the parameter entirely — needed only if
+// ANTHROPIC_MODEL pins a model that predates effort support.
+const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'];
+const DEFAULT_EFFORT = 'high';
+
+function resolveEffort() {
+  const v = (process.env.ANTHROPIC_EFFORT || '').trim().toLowerCase();
+  if (!v) return DEFAULT_EFFORT;
+  if (v === 'off' || v === 'none') return null;
+  if (!EFFORT_LEVELS.includes(v)) {
+    console.warn(`[config] Ignoring invalid ANTHROPIC_EFFORT="${v}"; using ${DEFAULT_EFFORT}.`);
+    return DEFAULT_EFFORT;
+  }
+  return v;
+}
+
+const EFFORT = resolveEffort();
+
+function getEffort() {
+  return EFFORT;
+}
+
+// Spread into a messages.create() call that assigns a score, so every scoring
+// surface reasons at the same depth:
+//   await client.messages.create({ ...gradingParams(), max_tokens: 2000, ... });
+// Feedback/recommendation prose calls deliberately do not use this.
+function gradingParams() {
+  return EFFORT
+    ? { model: getModel(), output_config: { effort: EFFORT } }
+    : { model: getModel() };
+}
+
 module.exports = {
   getModel,
   resolveModel,
+  getEffort,
+  gradingParams,
   FALLBACK,
+  DEFAULT_EFFORT,
   SCORING_RUBRIC_FIDELITY_RULE,
   SCORING_CONSISTENCY_RULE_BANDED,
   SCORING_CONSISTENCY_RULE_POINTS,

@@ -1,4 +1,4 @@
-const { getModel, SCORING_RUBRIC_FIDELITY_RULE, SCORING_CONSISTENCY_RULE_BANDED } = require('../config');
+const { getModel, gradingParams, SCORING_RUBRIC_FIDELITY_RULE, SCORING_CONSISTENCY_RULE_BANDED } = require('../config');
 const express = require('express');
 const Anthropic = require('@anthropic-ai/sdk');
 const { toFile } = Anthropic;
@@ -555,7 +555,7 @@ Return ONLY valid JSON, no markdown fences:
     }
 
     const createParams = {
-      model: getModel(),
+      ...gradingParams(),
       max_tokens: 4000,
       system,
       messages: [{ role: 'user', content: messageContent }]

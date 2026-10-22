@@ -1,4 +1,4 @@
-const { getModel, SCORING_CONSISTENCY_RULE_POINTS } = require('../config');
+const { getModel, gradingParams, SCORING_CONSISTENCY_RULE_POINTS } = require('../config');
 const express = require('express');
 const Anthropic = require('@anthropic-ai/sdk');
 
@@ -74,7 +74,7 @@ Return ONLY valid JSON, no markdown fences:
 ${resultSchema}`;
 
       const message = await client.messages.create({
-        model: getModel(),
+        ...gradingParams(),
         max_tokens: 300,
         messages: [
           { role: 'user', content: `STUDENT RESPONSE:\n${studentResponse}` },
