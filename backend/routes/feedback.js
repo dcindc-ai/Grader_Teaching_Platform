@@ -2,6 +2,7 @@ const { getModel } = require('../config');
 const express = require('express');
 const Anthropic = require('@anthropic-ai/sdk');
 const { db, parseGrade, firstName } = require('../db');
+const { scrubAiTells } = require('../lib/textVoice');
 const router = express.Router();
 
 const SECTION_LABELS = {
@@ -52,7 +53,7 @@ Write the instructor paragraph.`
       }]
     });
 
-    const paragraph = resp.content.find(b => b.type === 'text')?.text?.trim() || '';
+    const paragraph = scrubAiTells(resp.content.find(b => b.type === 'text')?.text?.trim() || '');
     db.prepare('UPDATE grades SET instructor_paragraph=? WHERE id=?').run(paragraph, grade.id);
     res.json({ paragraph });
   } catch (e) {

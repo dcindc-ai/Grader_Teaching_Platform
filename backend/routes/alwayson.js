@@ -1,7 +1,18 @@
 const { getModel } = require('../config');
 const express = require('express');
 const { db, parseAlwaysOn } = require('../db');
+const { scrubAiTells } = require('../lib/textVoice');
 const router = express.Router();
+
+// Scrub em-dashes/colons/semicolons from any Always-On text the student sees.
+function scrubAlwaysOn(p) {
+  if (!p || typeof p !== 'object') return p;
+  if (typeof p.overview === 'string') p.overview = scrubAiTells(p.overview);
+  if (typeof p.feedbackSentences === 'string') p.feedbackSentences = scrubAiTells(p.feedbackSentences);
+  if (typeof p.weakArea === 'string') p.weakArea = scrubAiTells(p.weakArea);
+  if (Array.isArray(p.recommendations)) p.recommendations = p.recommendations.map(r => typeof r === 'string' ? scrubAiTells(r) : r);
+  return p;
+}
 
 // GET pending/all always-on items
 router.get('/', (req, res) => {
@@ -453,7 +464,7 @@ Return ONLY valid JSON, no fences:
     });
 
     const text = resp.content.find(b => b.type === 'text')?.text || '{}';
-    const parsed = JSON.parse(text.replace(/```json\n?|```/g, '').trim());
+    const parsed = scrubAlwaysOn(JSON.parse(text.replace(/```json\n?|```/g, '').trim()));
 
     // Store class summary
     const { v4: uuidv4 } = require('uuid');
@@ -532,7 +543,7 @@ router.post('/generate', async (req, res) => {
         messages: [{ role: 'user', content: `Student data:\n${summary}\n\nReturn ONLY valid JSON:\n{"overview":"2-3 sentences on common gaps","recommendations":["specific actionable item 1","specific actionable item 2","optional third item"],"resources":[{"title":"resource title","url":"https://...","why":"1 sentence why this helps"}]}` }]
       });
       const text = resp.content.find(b => b.type === 'text')?.text || '{}';
-      const parsed = JSON.parse(text.replace(/```json\n?|```/g, '').trim());
+      const parsed = scrubAlwaysOn(JSON.parse(text.replace(/```json\n?|```/g, '').trim()));
       const id = uuidv4();
       db.prepare(`INSERT INTO always_on (id,course_id,assignment_id,assignment_name,student_name,weak_area,feedback_sentences,links,status) VALUES (?,?,?,?,?,?,?,?,?)`)
         .run(id, courseId, assignmentId || null, assignment?.name || 'Discussion', 'Class',
@@ -556,7 +567,7 @@ router.post('/generate', async (req, res) => {
           messages: [{ role: 'user', content: `${context}\n\nReturn ONLY valid JSON:\n{"weakArea":"the specific gap in 5-8 words","feedback":"2-3 sentences of personalized next-step guidance","resources":[{"title":"resource","url":"https://...","why":"why this helps"}]}` }]
         });
         const text = resp.content.find(b => b.type === 'text')?.text || '{}';
-        const parsed = JSON.parse(text.replace(/```json\n?|```/g, '').trim());
+        const parsed = scrubAlwaysOn(JSON.parse(text.replace(/```json\n?|```/g, '').trim()));
         const id = uuidv4();
         db.prepare(`INSERT INTO always_on (id,course_id,assignment_id,assignment_name,student_name,weak_area,feedback_sentences,links,status) VALUES (?,?,?,?,?,?,?,?,?)`)
           .run(id, courseId, assignmentId || null, assignment?.name || 'Discussion',

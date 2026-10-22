@@ -2,6 +2,7 @@ const { getModel } = require('../config');
 const express = require('express');
 const router = express.Router();
 const { db, parseGrade } = require('../db');
+const { scrubAiTells, scrubFields } = require('../lib/textVoice');
 const { v4: uuidv4 } = require('uuid');
 const Anthropic = require('@anthropic-ai/sdk');
 
@@ -226,6 +227,10 @@ Return ONLY valid JSON:
 
     const text = resp.content.find(b => b.type === 'text')?.text || '{}';
     const result = JSON.parse(text.replace(/```json\n?|```/g, '').trim());
+
+    // Deterministic voice cleanup: no em-dashes, colons, or semicolons in student-facing prose.
+    scrubFields(result, ['instructorParagraph', 'overallSummary']);
+    scrubFields(result.criteriaGrades, ['studentComment', 'scoringRationale', 'consistencyNote']);
 
     db.prepare(`UPDATE batch_grades SET status='graded', criteria_grades=?, instructor_paragraph=?,
       total_points=?, max_score=?, updated_at=datetime('now') WHERE id=?`)
