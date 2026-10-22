@@ -201,6 +201,7 @@ function parseAssignment(r) {
     rubric:r.rubric, rubricCriteria:r.rubric_criteria ? JSON.parse(r.rubric_criteria) : null,
     gradingGuidance:r.grading_guidance || '',
     canvasAssignmentId:r.canvas_assignment_id || '',
+    scoreCap: (r.score_cap === null || r.score_cap === undefined) ? null : r.score_cap,
     createdAt:r.created_at };
 }
 

@@ -42,18 +42,22 @@ router.put('/:id', (req, res) => {
     ? (Array.isArray(b.rubricCriteria) && b.rubricCriteria.length > 0 ? JSON.stringify(b.rubricCriteria) : null)
     : undefined; // undefined = don't touch it
 
+  // Per-assignment score cap: a number sets the hard ceiling; empty/null clears it.
+  const scoreCapValue = (b.scoreCap === '' || b.scoreCap === null || b.scoreCap === undefined || Number.isNaN(Number(b.scoreCap)))
+    ? null : Number(b.scoreCap);
+
   if (rubricCriteriaValue !== undefined) {
-    db.prepare('UPDATE assignments SET name=?,type=?,max_score=?,display_order=?,description=?,rubric=?,rubric_criteria=?,grading_guidance=?,canvas_assignment_id=?,target_avg=?,grading_strictness=? WHERE id=?')
+    db.prepare('UPDATE assignments SET name=?,type=?,max_score=?,display_order=?,description=?,rubric=?,rubric_criteria=?,grading_guidance=?,canvas_assignment_id=?,target_avg=?,grading_strictness=?,score_cap=? WHERE id=?')
       .run(b.name, b.type, b.maxScore, b.order, b.description, b.rubric,
         rubricCriteriaValue,
         b.gradingGuidance || '', b.canvasAssignmentId || '',
-        b.targetAvg ?? 4.5, b.gradingStrictness || 'standard',
+        b.targetAvg ?? 4.5, b.gradingStrictness || 'standard', scoreCapValue,
         req.params.id);
   } else {
-    db.prepare('UPDATE assignments SET name=?,type=?,max_score=?,display_order=?,description=?,rubric=?,grading_guidance=?,canvas_assignment_id=?,target_avg=?,grading_strictness=? WHERE id=?')
+    db.prepare('UPDATE assignments SET name=?,type=?,max_score=?,display_order=?,description=?,rubric=?,grading_guidance=?,canvas_assignment_id=?,target_avg=?,grading_strictness=?,score_cap=? WHERE id=?')
       .run(b.name, b.type, b.maxScore, b.order, b.description, b.rubric,
         b.gradingGuidance || '', b.canvasAssignmentId || '',
-        b.targetAvg ?? 4.5, b.gradingStrictness || 'standard',
+        b.targetAvg ?? 4.5, b.gradingStrictness || 'standard', scoreCapValue,
         req.params.id);
   }
   res.json(parseAssignment(db.prepare('SELECT * FROM assignments WHERE id=?').get(req.params.id)));

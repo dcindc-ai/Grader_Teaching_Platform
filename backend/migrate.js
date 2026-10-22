@@ -29,6 +29,9 @@ function migrate(db) {
     "ALTER TABLE assignments ADD COLUMN target_avg REAL DEFAULT 4.5",
     "ALTER TABLE assignments ADD COLUMN grading_strictness TEXT DEFAULT 'standard'",
     "ALTER TABLE assignments ADD COLUMN grading_guidance TEXT DEFAULT ''",
+    // Per-assignment hard ceiling: the grader will not score normal work above this.
+    // NULL = no cap set (fall back to the proportional top-of-scale default).
+    "ALTER TABLE assignments ADD COLUMN score_cap REAL",
 
     // Materials
     "ALTER TABLE materials ADD COLUMN material_type TEXT DEFAULT 'lecture'",

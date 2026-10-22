@@ -344,6 +344,30 @@ export default function AssignmentsTab({ course, password }) {
                 </div>
               </div>
 
+              {/* Max score cap — hard ceiling the grader will not exceed */}
+              <div className="field" style={{ marginBottom: 12 }}>
+                <label>
+                  Max score cap{' '}
+                  <span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: 11 }}>
+                    (optional — grader will not score above this; leave blank for no cap)
+                  </span>
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input type="number" min={0} max={parseFloat(form.maxScore || 6)} step={0.5}
+                    placeholder="no cap"
+                    value={form.scoreCap ?? ''}
+                    onChange={e => setForm(f => ({ ...f, scoreCap: e.target.value === '' ? null : parseFloat(e.target.value) }))}
+                    style={{ width: 120 }} />
+                  <span style={{ fontSize: 12, color: 'var(--text3)' }}>/ {form.maxScore || 6} pts</span>
+                  {(form.scoreCap ?? '') !== '' && form.scoreCap != null && (
+                    <button type="button" onClick={() => setForm(f => ({ ...f, scoreCap: null }))}
+                      style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg2)', cursor: 'pointer' }}>
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+
               <div className="field"><label>Description</label>
                 <textarea rows={8} value={form.description||''} onChange={e => setForm(f=>({...f,description:e.target.value}))} style={{ fontFamily:'var(--mono)',fontSize:12 }} /></div>
               <div className="field">
