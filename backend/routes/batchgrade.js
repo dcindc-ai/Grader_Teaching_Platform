@@ -6,24 +6,7 @@ const { scrubAiTells, scrubFields } = require('../lib/textVoice');
 const { v4: uuidv4 } = require('uuid');
 const Anthropic = require('@anthropic-ai/sdk');
 
-// Ensure batch_grades table
-db.prepare(`CREATE TABLE IF NOT EXISTS batch_grades (
-  id TEXT PRIMARY KEY,
-  course_id TEXT NOT NULL,
-  assignment_id TEXT NOT NULL,
-  student_name TEXT NOT NULL,
-  canvas_user_id TEXT,
-  status TEXT DEFAULT 'pending',
-  submission_text TEXT,
-  criteria_grades TEXT,
-  instructor_paragraph TEXT,
-  total_points REAL,
-  max_score REAL,
-  error TEXT,
-  approved_at TEXT,
-  created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now'))
-)`).run();
+// batch_grades is created by schema.js (applySchema), not here.
 
 // GET /api/batchgrade?courseId=X&assignmentId=Y
 router.get('/', (req, res) => {

@@ -3,19 +3,7 @@ const router = express.Router();
 const { db, parseGrade } = require('../db');
 const { v4: uuidv4 } = require('uuid');
 
-// Ensure flags table exists
-db.prepare(`CREATE TABLE IF NOT EXISTS grading_flags (
-  id TEXT PRIMARY KEY,
-  course_id TEXT NOT NULL,
-  assignment_id TEXT NOT NULL,
-  student_name TEXT NOT NULL,
-  grade_id TEXT,
-  flag_type TEXT NOT NULL,
-  criterion_name TEXT,
-  message TEXT NOT NULL,
-  status TEXT DEFAULT 'open',
-  created_at TEXT DEFAULT (datetime('now'))
-)`).run();
+// grading_flags is created by schema.js (applySchema), not here.
 
 // GET /api/flags?courseId=X&assignmentId=Y
 router.get('/', (req, res) => {

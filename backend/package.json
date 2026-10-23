@@ -4,7 +4,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node --experimental-sqlite server.js",
-    "dev": "nodemon --exec \"node --experimental-sqlite\" server.js"
+    "dev": "nodemon --exec \"node --experimental-sqlite\" server.js",
+    "test": "node --experimental-sqlite --test \"test/**/*.test.js\""
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.2",
