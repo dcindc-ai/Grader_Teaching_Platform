@@ -49,4 +49,23 @@ function selectBalanced(examples, cap) {
   return picked;
 }
 
-module.exports = { selectBalanced };
+/**
+ * Load an assignment's calibration examples and pick a balanced `cap` of them.
+ *
+ * The query is deliberately unbounded — the balancing has to see the whole pool
+ * to find the tiers. Limiting in SQL is what produced the one-sided selections
+ * this module exists to avoid.
+ *
+ * Callers format the result themselves: the three grading surfaces word their
+ * example blocks differently, and changing a surface's wording changes its
+ * prompt, which changes its grades.
+ */
+function loadExamplesFor(db, assignmentId, cap) {
+  if (!assignmentId) return [];
+  const pool = db
+    .prepare('SELECT * FROM examples WHERE assignment_id=? ORDER BY created_at DESC')
+    .all(assignmentId);
+  return selectBalanced(pool, cap);
+}
+
+module.exports = { selectBalanced, loadExamplesFor };

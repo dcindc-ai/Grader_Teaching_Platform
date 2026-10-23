@@ -9,6 +9,7 @@ const { v4: uuidv4 } = require('uuid');
 const { db } = require('../db');
 const { parseRubricCsv } = require('../parseRubricCsv');
 const { scrubAiTells, scrubFields } = require('../lib/textVoice');
+const { loadExamplesFor } = require('../lib/calibration');
 const { refetchAndStoreRubricCriteria } = require('./canvasimport');
 const router = express.Router();
 
@@ -180,23 +181,15 @@ ${c.ratings.map(r => `  - ${r.name} (${r.points} pts): ${r.description}`).join('
   // good/borderline/weak so the model sees both strong and weak reference points.
   let exampleContext = '';
   if (assignmentId) {
-    const pool = db.prepare('SELECT * FROM examples WHERE assignment_id=? ORDER BY created_at DESC').all(assignmentId);
-    const byQ = { good: [], borderline: [], weak: [] };
-    for (const e of pool) (byQ[e.quality] || (byQ[e.quality] = [])).push(e);
-    const tiers = ['good', 'borderline', 'weak'].filter(t => byQ[t] && byQ[t].length);
-    const examples = [];
-    const MAX_EXAMPLES = 6;
-    for (let i = 0; examples.length < MAX_EXAMPLES && tiers.some(t => byQ[t].length); i++) {
-      const t = tiers[i % tiers.length];
-      if (byQ[t].length) examples.push(byQ[t].shift());
-    }
+    const poolSize = db.prepare('SELECT COUNT(*) n FROM examples WHERE assignment_id=?').get(assignmentId).n;
+    const examples = loadExamplesFor(db, assignmentId, 6);
     if (examples.length) {
       const qLabel = q => ({ good: 'STRONG example', weak: 'WEAK example', borderline: 'BORDERLINE example' }[q] || `${q || 'unrated'} example`);
       exampleContext = '\n\nCALIBRATION EXAMPLES — real submissions this instructor already scored, spanning strong to weak. Use them to anchor your point values:\n' +
         examples.map(e => `[Instructor score: ${e.score} — ${qLabel(e.quality)}]\n${(e.content || '').slice(0, 500)}`).join('\n---\n');
     }
     const mix = examples.reduce((m, e) => (m[e.quality] = (m[e.quality] || 0) + 1, m), {});
-    console.log(`[discussgrade] calibration examples injected: ${examples.length} of ${pool.length}`, mix);
+    console.log(`[discussgrade] calibration examples injected: ${examples.length} of ${poolSize}`, mix);
   }
 
   // Scoring-consistency check. The Canvas "Always On Grader" panel is external

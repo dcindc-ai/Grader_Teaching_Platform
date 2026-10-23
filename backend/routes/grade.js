@@ -1,5 +1,6 @@
 const { getModel, gradingParams, SCORING_RUBRIC_FIDELITY_RULE, SCORING_CONSISTENCY_RULE_BANDED } = require('../config');
 const { scrubAiTells, scrubFields } = require('../lib/textVoice');
+const { loadExamplesFor } = require('../lib/calibration');
 const express = require('express');
 const multer = require('multer');
 const fs = require('fs');
@@ -468,7 +469,14 @@ async function gradeOne(filePath, assignment, course, skipAlwaysOn=false, origin
     }
   }
 
-  const examples = db.prepare('SELECT * FROM examples WHERE assignment_id=? ORDER BY created_at DESC LIMIT 3').all(assignment.id);
+  // Balanced across quality tiers, not the 3 newest: the bank is lopsided per
+  // assignment, so recency alone can supply only-good or only-weak anchors.
+  const examples = loadExamplesFor(db, assignment.id, 6);
+  {
+    const poolSize = db.prepare('SELECT COUNT(*) n FROM examples WHERE assignment_id=?').get(assignment.id).n;
+    const mix = examples.reduce((m, e) => (m[e.quality] = (m[e.quality] || 0) + 1, m), {});
+    console.log(`[grade] calibration examples injected: ${examples.length} of ${poolSize}`, mix);
+  }
   // Pull lecture materials first, then other materials
   // Lecture = directly assessed. Reference/example = context only.
   const materials = db.prepare(`

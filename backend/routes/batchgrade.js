@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 const { db, parseGrade } = require('../db');
 const { scrubAiTells, scrubFields } = require('../lib/textVoice');
+const { loadExamplesFor } = require('../lib/calibration');
 const { v4: uuidv4 } = require('uuid');
 const Anthropic = require('@anthropic-ai/sdk');
 
@@ -165,11 +166,27 @@ router.post('/grade-one', async (req, res) => {
 
   const VOICE_RULES = `VOICE RULES: No em-dashes. No filler phrases (it's worth noting, importantly, overall, that said). No AI tells (delves into, showcases, robust, testament to, commendable). No comparisons to other students — never mention most students, the class, peers, or class performance. Each student is evaluated on their own work only. Short sentences. Plain words. Start with first name only. Sound like a person, not a rubric.`;
 
+  // Calibration examples, balanced across quality tiers. Cap 3 rather than the 6
+  // the single-submission graders use: batch re-sends this block once per student,
+  // so a 71-student class pays for it 71 times.
+  const calExamples = loadExamplesFor(db, assignment.id, 3);
+  let exampleContext = '';
+  if (calExamples.length) {
+    const qLabel = q => ({ good: 'STRONG example', weak: 'WEAK example', borderline: 'BORDERLINE example' }[q] || `${q || 'unrated'} example`);
+    exampleContext = '\n\nCALIBRATION EXAMPLES — real submissions this instructor already scored, spanning strong to weak. Use them to anchor your point values:\n' +
+      calExamples.map(e => `[Instructor score: ${e.score} — ${qLabel(e.quality)}]\n${(e.content || '').slice(0, 500)}`).join('\n---\n');
+  }
+  {
+    const poolSize = db.prepare('SELECT COUNT(*) n FROM examples WHERE assignment_id=?').get(assignment.id).n;
+    const mix = calExamples.reduce((m, e) => (m[e.quality] = (m[e.quality] || 0) + 1, m), {});
+    console.log(`[batchgrade] calibration examples injected: ${calExamples.length} of ${poolSize}`, mix);
+  }
+
   const system = `You are grading a student discussion post for ${course.name}.
 Grade ONLY against the ${rubricCriteria.length} criteria below.
 Half-point scores are valid. Reference the student's actual words.
 If a deliverable exists in any format (table, image reference, screenshot), count it as meeting the requirement.
-${gradingGuidance ? `\nHARD RULES — DO NOT PENALIZE FOR:\n${gradingGuidance}` : ''}`;
+${gradingGuidance ? `\nHARD RULES — DO NOT PENALIZE FOR:\n${gradingGuidance}` : ''}${exampleContext}`;
 
   const prompt = `ASSIGNMENT: ${assignment.name}
 ${assignment.description ? `\nINSTRUCTIONS:\n${assignment.description}\n` : ''}
@@ -213,7 +230,7 @@ Return ONLY valid JSON:
 
     // Deterministic voice cleanup: no em-dashes, colons, or semicolons in student-facing prose.
     scrubFields(result, ['instructorParagraph', 'overallSummary']);
-    scrubFields(result.criteriaGrades, ['studentComment', 'scoringRationale', 'consistencyNote']);
+    scrubFields(result.criteriaGrades, ['studentComment', 'scoringRationale']);
 
     db.prepare(`UPDATE batch_grades SET status='graded', criteria_grades=?, instructor_paragraph=?,
       total_points=?, max_score=?, updated_at=datetime('now') WHERE id=?`)
