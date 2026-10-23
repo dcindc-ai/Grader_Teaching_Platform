@@ -3,7 +3,10 @@ const { applySchema } = require('./schema');
 const path = require('path');
 const fs = require('fs');
 
-const DB_PATH = path.join(__dirname, 'data', 'platform.db');
+// Defaults to the real database. DB_PATH lets a throwaway copy be used
+// instead, so the server can be exercised end to end without writing to the
+// only copy of the grades.
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data', 'platform.db');
 const dataDir = path.dirname(DB_PATH);
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 

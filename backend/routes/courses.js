@@ -1,6 +1,12 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const { db, parseCourse } = require('../db');
+const {
+  cloneCourse,
+  deleteCourse,
+  CourseNotFound,
+  CourseDeleteBlocked,
+} = require('../lib/courseLifecycle');
 const router = express.Router();
 
 router.get('/', (req, res) => {
@@ -39,9 +45,45 @@ router.put('/:id', (req, res) => {
   res.json(parseCourse(db.prepare('SELECT * FROM courses WHERE id=?').get(req.params.id)));
 });
 
+// POST /api/courses/:id/clone — stand up a new term from an existing course.
+// Carries the assignments and their grading configuration, the active
+// materials, and the calibration examples. Never carries students, grades, or
+// Canvas assignment ids.
+router.post('/:id/clone', (req, res) => {
+  const { name, term } = req.body || {};
+  if (!name || !String(name).trim()) {
+    return res.status(400).json({ error: 'name is required' });
+  }
+  try {
+    const { course, counts } = cloneCourse(db, req.params.id, {
+      name: String(name).trim(),
+      term: term ? String(term).trim() : '',
+    });
+    res.json({ course: parseCourse(course), counts });
+  } catch (e) {
+    if (e instanceof CourseNotFound) return res.status(404).json({ error: 'Course not found' });
+    console.error('[courses] clone failed:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/courses/:id — remove an EMPTY course, and nothing else.
+// Refused with 409 and the per-table counts if the course holds anything at
+// all. This never deletes student data; see lib/courseLifecycle.js.
 router.delete('/:id', (req, res) => {
-  db.prepare('DELETE FROM courses WHERE id=?').run(req.params.id);
-  res.json({ ok: true });
+  try {
+    res.json(deleteCourse(db, req.params.id));
+  } catch (e) {
+    if (e instanceof CourseNotFound) return res.status(404).json({ error: 'Course not found' });
+    if (e instanceof CourseDeleteBlocked) {
+      return res.status(409).json({
+        error: 'This course still has data in it, so it cannot be deleted.',
+        counts: e.counts,
+      });
+    }
+    console.error('[courses] delete failed:', e);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 module.exports = router;
