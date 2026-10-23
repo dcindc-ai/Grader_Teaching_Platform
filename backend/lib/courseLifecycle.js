@@ -185,11 +185,43 @@ function cloneCourse(db, sourceCourseId, { name, term, ...overrides } = {}) {
   }
 }
 
+/**
+ * Find another assignment already using this Canvas assignment id.
+ *
+ * Blanking canvas_assignment_id on clone stops the id being copied, but not a
+ * duplicate typed in by hand afterwards — and a clone leaves thirteen
+ * identically named assignments waiting for ids. A duplicate is not harmless:
+ * the Canvas extension resolves by id and takes the first row, ordered only by
+ * display_order, so the new term would silently grade against the old term's
+ * Canvas record.
+ *
+ * Returns the conflicting assignment with its course name and term, or null.
+ * This is advisory — the caller warns and still saves. A hard refusal would
+ * also block legitimate cases, and the realistic failure here is a typo worth
+ * pointing out, not an invariant the database needs to enforce.
+ */
+function findCanvasIdConflict(db, assignmentId, canvasAssignmentId) {
+  // Every cloned assignment starts blank. Short-circuit before the query, or
+  // the first save after a clone reports a conflict with all its siblings.
+  const id = canvasAssignmentId == null ? '' : String(canvasAssignmentId).trim();
+  if (id === '') return null;
+
+  return db.prepare(`
+    SELECT a.id, a.name, a.canvas_assignment_id,
+           c.name AS course_name, c.term AS term
+    FROM assignments a
+    LEFT JOIN courses c ON c.id = a.course_id
+    WHERE TRIM(a.canvas_assignment_id) = ? AND a.id != ?
+    LIMIT 1
+  `).get(id, assignmentId) || null;
+}
+
 module.exports = {
   LINKED_TABLES,
   deleteBlockers,
   deleteCourse,
   cloneCourse,
+  findCanvasIdConflict,
   CourseNotFound,
   CourseDeleteBlocked,
 };

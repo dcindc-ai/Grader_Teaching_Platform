@@ -2,6 +2,7 @@ const { getModel } = require('../config');
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const { db, parseAssignment } = require('../db');
+const { findCanvasIdConflict } = require('../lib/courseLifecycle');
 const router = express.Router();
 
 router.get('/', (req, res) => {
@@ -60,7 +61,14 @@ router.put('/:id', (req, res) => {
         b.targetAvg ?? 4.5, b.gradingStrictness || 'standard', scoreCapValue,
         req.params.id);
   }
-  res.json(parseAssignment(db.prepare('SELECT * FROM assignments WHERE id=?').get(req.params.id)));
+  // Advisory only: the save above has already happened. A clone leaves 13
+  // identically named assignments with blank Canvas ids, and a duplicate typed
+  // into one of them would silently point this term at the other term's
+  // Canvas record.
+  const saved = parseAssignment(db.prepare('SELECT * FROM assignments WHERE id=?').get(req.params.id));
+  const conflict = findCanvasIdConflict(db, req.params.id, b.canvasAssignmentId);
+  if (conflict) saved.canvasIdWarning = conflict;
+  res.json(saved);
 });
 
 router.delete('/:id', (req, res) => {
@@ -134,12 +142,17 @@ router.post('/:id/examples/import', (req, res) => {
 // GET /api/assignments/:id/examples/library — every example from OTHER assignments
 // (any course / any term), so the instructor can browse and carry one forward as a
 // calibration example for this assignment. Each row carries its source assignment
-// name, course, and max_score so the term is identifiable in the picker.
+// name, course, term, and max_score so the term is identifiable in the picker.
+//
+// term matters more than it looks: both AIN 714 courses are named "AIN 714",
+// and a clone adds a third with verbatim-identical assignment names. Without
+// the term the picker cannot tell the source rows apart at all.
 router.get('/:id/examples/library', (req, res) => {
   const rows = db.prepare(`
     SELECT e.id, e.assignment_id, e.course_id, e.student_name, e.score, e.quality, e.notes, e.content, e.created_at,
            a.name AS assignment_name, a.max_score AS assignment_max_score,
-           c.name AS course_name, c.full_name AS course_full_name
+           a.course_id AS source_course_id,
+           c.name AS course_name, c.full_name AS course_full_name, c.term AS course_term
     FROM examples e
     JOIN assignments a ON e.assignment_id = a.id
     LEFT JOIN courses c ON a.course_id = c.id
