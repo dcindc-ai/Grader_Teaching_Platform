@@ -241,12 +241,34 @@ which tables count as "real" data.
 
 The `258d1f09…` Fall 2 shell is zero across all nine tables, so it qualifies.
 
-**Known consequence.** A clone that came out wrong is **not** deletable, because
-it has 13 assignments and its carried examples. To discard one, delete its
-assignments first (which empties `examples` with them, since examples hang off
-assignments), or leave it and clone again under a different name. This is the
-accepted cost of never deleting anything that holds data; revisit only if
-botched clones turn out to be common.
+**Known consequence — and the workaround does not currently exist.** A clone
+that came out wrong is **not** deletable: it holds 13 assignments and ~151
+carried examples.
+
+An earlier draft of this document said to "delete its assignments first, which
+empties `examples` with them." That is false. `DELETE /api/assignments/:id`
+(`routes/assignments.js:74`) removes only the `assignments` row; the examples
+keep their `course_id` and become unreachable rows that still block the
+delete. The only working path today is removing examples one at a time through
+`DELETE /:id/examples/:exId` — 151 clicks — or editing the database by hand.
+
+So the honest position is: **a botched clone cannot be removed through the
+app.** Clone makes bad clones cheap to create and the guard makes them
+impossible to discard, which is a gap worth closing deliberately rather than
+by accident. Three options, cheapest first:
+
+1. Leave it. Rename the bad clone and reuse it instead of discarding. No code,
+   no new destructive path.
+2. Make `DELETE /api/assignments/:id` remove that assignment's examples. They
+   are the assignment's own data, not student work — but it is a new
+   destructive path and needs its own guard and tests.
+3. A narrow "discard clone" permitted only when `students`, `grades`,
+   `discussions`, `always_on`, `grading_flags` and `batch_grades` are all
+   zero — i.e. a course that has never been used for anything real.
+
+Options 2 and 3 both delete rows, which is the thing this feature was
+explicitly built not to do. Neither is in scope without the instructor's
+decision.
 
 **Delete never touches files on disk.** It cannot: a course with materials has
 a non-empty `materials` table and is therefore not deletable at all. Worth

@@ -50,6 +50,24 @@ function selectBalanced(examples, cap) {
 }
 
 /**
+ * A short, honest label for an example's quality tier.
+ *
+ * The point is that nothing but a genuinely good example is ever labelled
+ * GOOD. A borderline submission presented to the model as a strong reference
+ * point anchors it upward, which is the exact failure the balanced selection
+ * above exists to prevent — and the round-robin guarantees a borderline
+ * example appears in most passes, so a two-way good/weak label is wrong far
+ * more often than it used to be.
+ *
+ * An unrecognised tier is surfaced as itself rather than bucketed.
+ */
+function qualityTag(quality) {
+  const q = (quality || '').trim();
+  if (!q) return 'UNRATED';
+  return q.toUpperCase();
+}
+
+/**
  * Load an assignment's calibration examples and pick a balanced `cap` of them.
  *
  * The query is deliberately unbounded — the balancing has to see the whole pool
@@ -68,4 +86,4 @@ function loadExamplesFor(db, assignmentId, cap) {
   return selectBalanced(pool, cap);
 }
 
-module.exports = { selectBalanced, loadExamplesFor };
+module.exports = { selectBalanced, loadExamplesFor, qualityTag };

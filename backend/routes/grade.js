@@ -1,6 +1,6 @@
 const { getModel, gradingParams, SCORING_RUBRIC_FIDELITY_RULE, SCORING_CONSISTENCY_RULE_BANDED } = require('../config');
 const { scrubAiTells, scrubFields } = require('../lib/textVoice');
-const { loadExamplesFor } = require('../lib/calibration');
+const { loadExamplesFor, qualityTag } = require('../lib/calibration');
 const express = require('express');
 const multer = require('multer');
 const fs = require('fs');
@@ -227,7 +227,7 @@ function buildGradePrompt(assignment, course, examples, materials, gradeOptions 
   const sliders = JSON.parse(course.sliders || '{}');
   const sliderStr = DIMS.map(d => `${d}: ${sliders[d]||3}/5`).join(', ');
   const exStr = examples.length
-    ? examples.map(e => `EXAMPLE — ${e.student_name} (${e.score}/${assignment.max_score}${e.quality==='weak'?' WEAK':' GOOD'}):\nNotes: ${e.notes || ''}\n${(e.content || '').slice(0, 600)}`).join('\n\n---\n\n')
+    ? examples.map(e => `EXAMPLE — ${e.student_name} (${e.score}/${assignment.max_score} ${qualityTag(e.quality)}):\nNotes: ${e.notes || ''}\n${(e.content || '').slice(0, 600)}`).join('\n\n---\n\n')
     : 'No calibration examples yet.';
   const matStr = materials.length
     ? `

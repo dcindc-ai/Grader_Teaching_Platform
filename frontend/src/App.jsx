@@ -213,7 +213,12 @@ export default function App() {
             password={pw}
             onUpdateCourse={updateCourse}
             onDeleteCourse={() => removeCourse(course.id)}
-            onClonedCourse={addCourse}
+            // Add the clone to the sidebar but stay put. addCourse would make
+            // it active, remounting CourseShell and unmounting the settings
+            // panel in the same render that populated it — so the user would
+            // never see what the clone created, or the reminder to fill in the
+            // new Canvas assignment IDs.
+            onClonedCourse={(created) => setCourses(cs => [...cs, created])}
             // Persisted state passed down
             gradeQueue={gradeQueues[course.id] || []}
             onGradeQueue={(updater) => updateGradeQueue(course.id, updater)}

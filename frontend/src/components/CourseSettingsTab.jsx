@@ -143,7 +143,7 @@ export default function CourseSettingsTab({ course, password, onUpdate, onDelete
           {cloneResult && (
             <div style={{ marginTop: 10, fontSize: 12 }}>
               {cloneResult.ok
-                ? `Created ${cloneResult.name}: ${cloneResult.counts.assignments} assignments, ${cloneResult.counts.examples} calibration examples, ${cloneResult.counts.materials} materials. Add the new Canvas assignment IDs before grading.`
+                ? `Created ${cloneResult.name}: ${cloneResult.counts.assignments} assignments, ${cloneResult.counts.examples} calibration examples, ${cloneResult.counts.materials} materials. It is in the sidebar now — add the new Canvas assignment IDs before grading.`
                 : `Clone failed: ${cloneResult.message}`}
             </div>
           )}

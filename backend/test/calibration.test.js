@@ -59,3 +59,28 @@ test('does not mutate the caller\'s array', () => {
   selectBalanced(pool, 4);
   assert.deepStrictEqual(pool.map(e => e.id), before);
 });
+
+// Added after review: grade.js labelled every non-weak example GOOD. That was
+// harmless when selection was "3 newest"; the round-robin now puts a
+// borderline example in slot 2 of every pass, so the mislabel became
+// systematic — on 10 of the 20 assignments that have examples, two borderline
+// submissions would be presented to the model as strong reference points.
+const { qualityTag } = require('../lib/calibration');
+
+test('qualityTag distinguishes borderline from good', () => {
+  assert.strictEqual(qualityTag('good'), 'GOOD');
+  assert.strictEqual(qualityTag('weak'), 'WEAK');
+  assert.strictEqual(qualityTag('borderline'), 'BORDERLINE');
+});
+
+test('qualityTag never calls a non-good example GOOD', () => {
+  for (const q of ['borderline', 'weak', 'excellent', null, undefined, '']) {
+    assert.notStrictEqual(qualityTag(q), 'GOOD', `${q} must not be labelled GOOD`);
+  }
+});
+
+test('qualityTag surfaces an unrecognised tier rather than guessing', () => {
+  assert.strictEqual(qualityTag('excellent'), 'EXCELLENT');
+  assert.strictEqual(qualityTag(null), 'UNRATED');
+  assert.strictEqual(qualityTag(''), 'UNRATED');
+});

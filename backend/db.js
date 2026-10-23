@@ -6,11 +6,30 @@ const fs = require('fs');
 // Defaults to the real database. DB_PATH lets a throwaway copy be used
 // instead, so the server can be exercised end to end without writing to the
 // only copy of the grades.
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data', 'platform.db');
+const DEFAULT_DB_PATH = path.join(__dirname, 'data', 'platform.db');
+const DB_PATH = process.env.DB_PATH || DEFAULT_DB_PATH;
+const isOverride = DB_PATH !== DEFAULT_DB_PATH;
+
+// Without this, a DB_PATH left in .env — or exported in a shell during a
+// verification session — silently redirects the whole app into a new, empty
+// database: node:sqlite creates the file, applySchema builds the tables, and
+// the seed below adds the default courses. Everything looks normal while a
+// term's grading goes somewhere nobody is backing up.
+if (isOverride && !fs.existsSync(DB_PATH) && !process.env.DB_ALLOW_CREATE) {
+  throw new Error(
+    `DB_PATH points at a database that does not exist: ${DB_PATH}\n` +
+    'Refusing to create it, because a typo here means grading into a file nobody backs up.\n' +
+    'Unset DB_PATH to use the real database, or set DB_ALLOW_CREATE=1 if a new one is what you want.'
+  );
+}
+
 const dataDir = path.dirname(DB_PATH);
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 
 const db = new DatabaseSync(DB_PATH);
+// Unconditional: which database is open is the one thing you must never have
+// to guess about.
+console.log(`[db] using ${DB_PATH}${isOverride ? '  (DB_PATH override)' : ''}`);
 
 // Enable WAL mode and foreign keys
 db.exec('PRAGMA journal_mode = WAL');
