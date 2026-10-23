@@ -1,5 +1,12 @@
-import { useState } from 'react';
-import { updateCourse } from '../api.js';
+import { useState, useEffect } from 'react';
+import { updateCourse, deleteCourse, getCourseDeleteBlockers, cloneCourse } from '../api.js';
+
+// "13 assignments, 151 examples"
+function describeCounts(counts) {
+  return Object.entries(counts || {})
+    .map(([table, n]) => `${n} ${table.replace(/_/g, ' ')}`)
+    .join(', ');
+}
 
 const DIMS = [
   { key: 'clarity', label: 'Clarity', lo: 'Accept buried BLUF', hi: 'BLUF must be sentence 1' },
@@ -11,10 +18,17 @@ const DIMS = [
 
 const COLORS = ['#E21833','#CFB53B','#4f8ef7','#4caf72','#e07830','#9b59b6','#e05252','#16a085'];
 
-export default function CourseSettingsTab({ course, password, onUpdate, onDelete }) {
+export default function CourseSettingsTab({ course, password, onUpdate, onDelete, onCloned }) {
   const [form, setForm] = useState({ ...course });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [blockers, setBlockers] = useState(null);
+  const [deleteError, setDeleteError] = useState('');
+  const [cloneOpen, setCloneOpen] = useState(false);
+  const [cloneName, setCloneName] = useState(course.name || '');
+  const [cloneTerm, setCloneTerm] = useState('');
+  const [cloning, setCloning] = useState(false);
+  const [cloneResult, setCloneResult] = useState(null);
 
   function upd(k, v) { setForm(f => ({ ...f, [k]: v })); }
   function updSlider(k, v) { setForm(f => ({ ...f, sliders: { ...f.sliders, [k]: parseInt(v) } })); }
@@ -28,9 +42,45 @@ export default function CourseSettingsTab({ course, password, onUpdate, onDelete
     setTimeout(() => setSaved(false), 2000);
   }
 
+  // What, if anything, stops this course being deleted. Refreshed per course.
+  useEffect(() => {
+    let live = true;
+    setBlockers(null);
+    getCourseDeleteBlockers(course.id, password)
+      .then(b => { if (live) setBlockers(b); })
+      .catch(() => { if (live) setBlockers({ counts: {}, deletable: false }); });
+    return () => { live = false; };
+  }, [course.id, password]);
+
   async function handleDelete() {
-    if (!confirm(`Delete ${course.name}? All assignments and grades for this course will be lost.`)) return;
-    onDelete();
+    // Only an empty course can be deleted, so there is nothing to warn about
+    // losing — the confirm just guards against a misclick.
+    if (!confirm(`Delete ${course.name}? It is empty, so nothing else is removed.`)) return;
+    setDeleteError('');
+    try {
+      await deleteCourse(course.id, password);
+      onDelete();
+    } catch (e) {
+      setDeleteError(e.blocked
+        ? `Cannot delete: this course still has ${describeCounts(e.counts)}.`
+        : e.message);
+      getCourseDeleteBlockers(course.id, password).then(setBlockers).catch(() => {});
+    }
+  }
+
+  async function handleClone() {
+    if (!cloneName.trim()) return;
+    setCloning(true);
+    setCloneResult(null);
+    try {
+      const { course: created, counts } = await cloneCourse(
+        course.id, { name: cloneName.trim(), term: cloneTerm.trim() }, password);
+      setCloneResult({ ok: true, counts, name: created.name });
+      onCloned?.(created);
+    } catch (e) {
+      setCloneResult({ ok: false, message: e.message });
+    }
+    setCloning(false);
   }
 
   const avg = form.sliders ? (Object.values(form.sliders).reduce((a,b)=>a+b,0)/5).toFixed(1) : '3.0';
@@ -44,9 +94,61 @@ export default function CourseSettingsTab({ course, password, onUpdate, onDelete
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save changes'}</button>
-          <button className="danger" onClick={handleDelete}>Delete course</button>
+          <button onClick={() => setCloneOpen(o => !o)}>Clone course</button>
+          <button
+            className="danger"
+            onClick={handleDelete}
+            disabled={!blockers || !blockers.deletable}
+            title={
+              !blockers ? 'Checking…'
+                : blockers.deletable ? 'This course is empty and can be deleted'
+                : `Cannot delete: still has ${describeCounts(blockers.counts)}`
+            }>
+            Delete course
+          </button>
         </div>
       </div>
+
+      {blockers && !blockers.deletable && (
+        <div className="card" style={{ marginBottom: 14, fontSize: 12, color: 'var(--text3)' }}>
+          This course cannot be deleted: it still has {describeCounts(blockers.counts)}.
+          Only an empty course can be removed, so nothing with student work in it is ever deleted.
+        </div>
+      )}
+      {deleteError && (
+        <div className="card" style={{ marginBottom: 14, fontSize: 12 }}>{deleteError}</div>
+      )}
+
+      {cloneOpen && (
+        <div className="card" style={{ marginBottom: 14 }}>
+          <div style={{ fontWeight: 500, marginBottom: 6 }}>Clone this course into a new term</div>
+          <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 10 }}>
+            Copies every assignment with its rubric, guidance, target average, strictness and score cap,
+            plus the calibration examples and active materials. No students, no grades.
+            Canvas assignment IDs are left blank for you to fill in.
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <div className="field" style={{ margin: 0 }}>
+              <label>New course name</label>
+              <input value={cloneName} onChange={e => setCloneName(e.target.value)} placeholder="AIN 714" />
+            </div>
+            <div className="field" style={{ margin: 0 }}>
+              <label>Term</label>
+              <input value={cloneTerm} onChange={e => setCloneTerm(e.target.value)} placeholder="Fall 2 2026" />
+            </div>
+            <button className="primary" onClick={handleClone} disabled={cloning || !cloneName.trim()}>
+              {cloning ? 'Cloning…' : 'Create clone'}
+            </button>
+          </div>
+          {cloneResult && (
+            <div style={{ marginTop: 10, fontSize: 12 }}>
+              {cloneResult.ok
+                ? `Created ${cloneResult.name}: ${cloneResult.counts.assignments} assignments, ${cloneResult.counts.examples} calibration examples, ${cloneResult.counts.materials} materials. Add the new Canvas assignment IDs before grading.`
+                : `Clone failed: ${cloneResult.message}`}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Basic info */}
       <div className="card" style={{ marginBottom: 14 }}>

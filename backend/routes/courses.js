@@ -4,6 +4,7 @@ const { db, parseCourse } = require('../db');
 const {
   cloneCourse,
   deleteCourse,
+  deleteBlockers,
   CourseNotFound,
   CourseDeleteBlocked,
 } = require('../lib/courseLifecycle');
@@ -63,6 +64,19 @@ router.post('/:id/clone', (req, res) => {
   } catch (e) {
     if (e instanceof CourseNotFound) return res.status(404).json({ error: 'Course not found' });
     console.error('[courses] clone failed:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/courses/:id/delete-blockers — what, if anything, stops this course
+// being deleted. Lets the UI disable the control and say why, instead of
+// offering a button that always refuses.
+router.get('/:id/delete-blockers', (req, res) => {
+  try {
+    const counts = deleteBlockers(db, req.params.id);
+    res.json({ counts, deletable: Object.keys(counts).length === 0 });
+  } catch (e) {
+    if (e instanceof CourseNotFound) return res.status(404).json({ error: 'Course not found' });
     res.status(500).json({ error: e.message });
   }
 });

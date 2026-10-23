@@ -213,6 +213,7 @@ export default function App() {
             password={pw}
             onUpdateCourse={updateCourse}
             onDeleteCourse={() => removeCourse(course.id)}
+            onClonedCourse={addCourse}
             // Persisted state passed down
             gradeQueue={gradeQueues[course.id] || []}
             onGradeQueue={(updater) => updateGradeQueue(course.id, updater)}

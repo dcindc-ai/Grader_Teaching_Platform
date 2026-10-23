@@ -33,7 +33,7 @@ const TABS = [
 ];
 
 export default function CourseShell({
-  course, password, onUpdateCourse, onDeleteCourse,
+  course, password, onUpdateCourse, onDeleteCourse, onClonedCourse,
   gradeQueue, onGradeQueue, gradeResults, onGradeResults,
   discussSession, onDiscussSession,
   labelQueue, onLabelQueue,
@@ -180,7 +180,7 @@ export default function CourseShell({
         )}
         {tab === 'settings' && (
           <CourseSettingsTab course={course} password={password}
-            onUpdate={onUpdateCourse} onDelete={onDeleteCourse} />
+            onUpdate={onUpdateCourse} onDelete={onDeleteCourse} onCloned={onClonedCourse} />
         )}
       </div>
     </div>

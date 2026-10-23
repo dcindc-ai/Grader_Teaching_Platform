@@ -34,6 +34,7 @@ export default function AssignmentsTab({ course, password }) {
   const [copyingId, setCopyingId] = useState(null);
   const [parsing, setParsing] = useState(false);
   const [importingCanvas, setImportingCanvas] = useState(false);
+  const [canvasIdWarning, setCanvasIdWarning] = useState(null);
   const pdfRef = useRef();
   const csvRef = useRef();
   const jsonlRef = useRef();
@@ -106,6 +107,7 @@ export default function AssignmentsTab({ course, password }) {
 
   function selectAssignment(a) {
     setSelected(a); setForm(a); setEditMode(false); setSaved(false);
+    setCanvasIdWarning(null);
   }
 
   async function saveAssignment() {
@@ -113,6 +115,11 @@ export default function AssignmentsTab({ course, password }) {
     const updated = await updateAssignment(selected.id, form, password);
     setAssignments(as => as.map(a => a.id === updated.id ? updated : a));
     setSelected(updated);
+    // The save has already happened; this only points out that another
+    // assignment claims the same Canvas id. After a clone, 13 assignments
+    // share a name and are waiting for ids, so a typo is easy and otherwise
+    // silent: the extension resolves by id and takes whichever row comes first.
+    setCanvasIdWarning(updated.canvasIdWarning || null);
     setSaving(false); setSaved(true);
     setTimeout(() => setSaved(false), 2000);
     setEditMode(false);
@@ -298,6 +305,21 @@ export default function AssignmentsTab({ course, password }) {
               }
             </div>
           </div>
+
+          {canvasIdWarning && (
+            <div className="card" style={{ marginBottom: 12, borderLeft: '3px solid var(--warn, #e07830)' }}>
+              <div style={{ fontWeight: 500, fontSize: 13, marginBottom: 4 }}>
+                Canvas ID {canvasIdWarning.canvas_assignment_id} is already used by another assignment
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text2)' }}>
+                “{canvasIdWarning.name}” in {canvasIdWarning.course_name}
+                {canvasIdWarning.term ? ` — ${canvasIdWarning.term}` : ''}.
+                This assignment was still saved. If that is not deliberate, grading here may read
+                and write the other assignment&apos;s Canvas records.
+              </div>
+              <button style={{ fontSize: 11, marginTop: 8 }} onClick={() => setCanvasIdWarning(null)}>Dismiss</button>
+            </div>
+          )}
 
           {editMode ? (
             <>

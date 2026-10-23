@@ -27,7 +27,23 @@ async function del(url, pw) {
 export const getCourses = (pw) => get('/api/courses', pw);
 export const createCourse = (data, pw) => post('/api/courses', data, pw);
 export const updateCourse = (id, data, pw) => put(`/api/courses/${id}`, data, pw);
-export const deleteCourse = (id, pw) => del(`/api/courses/${id}`, pw);
+// Not the shared del(): that ignores the status code, so a refusal would look
+// like a success. A blocked delete throws an error carrying the per-table
+// counts so the caller can say what is in the way.
+export async function deleteCourse(id, pw) {
+  const r = await fetch(`${BASE}/api/courses/${id}`, { method: 'DELETE', headers: h(pw) });
+  const body = await r.json().catch(() => ({}));
+  if (r.status === 409) {
+    const err = new Error(body.error || 'This course still has data in it.');
+    err.blocked = true;
+    err.counts = body.counts || {};
+    throw err;
+  }
+  if (!r.ok) throw new Error(body.error || `Delete failed (${r.status})`);
+  return body;
+}
+export const getCourseDeleteBlockers = (id, pw) => get(`/api/courses/${id}/delete-blockers`, pw);
+export const cloneCourse = (id, data, pw) => post(`/api/courses/${id}/clone`, data, pw);
 
 // Assignments
 export const getAssignments = (courseId, pw) => get(`/api/assignments?courseId=${courseId}`, pw);
