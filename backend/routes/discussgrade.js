@@ -10,6 +10,7 @@ const { db } = require('../db');
 const { parseRubricCsv } = require('../parseRubricCsv');
 const { scrubAiTells, scrubFields } = require('../lib/textVoice');
 const { loadExamplesFor } = require('../lib/calibration');
+const { parseGradingJson } = require('../lib/gradingResponse');
 const { refetchAndStoreRubricCriteria } = require('./canvasimport');
 const router = express.Router();
 
@@ -549,7 +550,11 @@ Return ONLY valid JSON, no markdown fences:
 
     const createParams = {
       ...gradingParams(),
-      max_tokens: 4000,
+      // Thinking tokens count against this. At effort "high" the reasoning
+      // alone runs ~2k, and the JSON for 5 criteria plus an 8-sentence
+      // paragraph is another ~2k, so 4000 truncated mid-string. You are billed
+      // for what is generated, not for the ceiling.
+      max_tokens: 16000,
       system,
       messages: [{ role: 'user', content: messageContent }]
     };
@@ -567,8 +572,7 @@ Return ONLY valid JSON, no markdown fences:
       }
     }
 
-    const text = resp.content.find(b => b.type === 'text')?.text || '{}';
-    const result = JSON.parse(text.replace(/```json\n?|```/g, '').trim());
+    const result = parseGradingJson(resp, 'discussgrade');
     console.log(`[discussgrade] criteriaGrades returned: ${result.criteriaGrades?.length} items for ${rubricCriteria.length} criteria`);
 
     // Deterministic backstop: scrub any formatting/code-block critique the model

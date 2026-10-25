@@ -4,6 +4,7 @@ const router = express.Router();
 const { db, parseGrade } = require('../db');
 const { scrubAiTells, scrubFields } = require('../lib/textVoice');
 const { loadExamplesFor } = require('../lib/calibration');
+const { parseGradingJson } = require('../lib/gradingResponse');
 const { v4: uuidv4 } = require('uuid');
 const Anthropic = require('@anthropic-ai/sdk');
 
@@ -220,13 +221,14 @@ Return ONLY valid JSON:
 
     const resp = await client.messages.create({
       ...gradingParams(),
-      max_tokens: 4000,
+      // Thinking counts against this; 4000 truncated the JSON mid-string.
+      // Billed on tokens generated, not the ceiling.
+      max_tokens: 16000,
       system,
       messages: [{ role: 'user', content: prompt }]
     });
 
-    const text = resp.content.find(b => b.type === 'text')?.text || '{}';
-    const result = JSON.parse(text.replace(/```json\n?|```/g, '').trim());
+    const result = parseGradingJson(resp, 'batchgrade');
 
     // Deterministic voice cleanup: no em-dashes, colons, or semicolons in student-facing prose.
     scrubFields(result, ['instructorParagraph', 'overallSummary']);

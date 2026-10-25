@@ -1,4 +1,5 @@
 const { getModel, gradingParams, SCORING_CONSISTENCY_RULE_POINTS } = require('../config');
+const { parseGradingJson } = require('../lib/gradingResponse');
 const express = require('express');
 const Anthropic = require('@anthropic-ai/sdk');
 
@@ -75,20 +76,22 @@ ${resultSchema}`;
 
       const message = await client.messages.create({
         ...gradingParams(),
-        max_tokens: 300,
+        // 300 could not cover the thinking tokens alone, let alone the answer.
+        max_tokens: 4000,
         messages: [
           { role: 'user', content: `STUDENT RESPONSE:\n${studentResponse}` },
         ],
         system: systemPrompt,
       });
 
-      const text = message.content[0].text.trim();
+      // content[0] is not reliably the text block: with thinking on, a
+      // thinking block comes first and has no .text at all.
+      const text = (message.content.find(b => b.type === 'text')?.text || '').trim();
       let parsed;
       try {
-        // Strip markdown fences if present
-        const clean = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
-        parsed = JSON.parse(clean);
+        parsed = parseGradingJson(message, 'quizgrade');
       } catch (e) {
+        console.warn('[quizgrade] falling back to text extraction:', e.message);
         // Fallback: try to extract score and feedback from text
         const scoreMatch = text.match(/"score"\s*:\s*([\d.]+)/);
         const fbMatch = text.match(/"feedback"\s*:\s*"([^"]+)"/);

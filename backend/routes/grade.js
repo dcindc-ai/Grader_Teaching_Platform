@@ -1,6 +1,7 @@
 const { getModel, gradingParams, SCORING_RUBRIC_FIDELITY_RULE, SCORING_CONSISTENCY_RULE_BANDED } = require('../config');
 const { scrubAiTells, scrubFields } = require('../lib/textVoice');
 const { loadExamplesFor, qualityTag } = require('../lib/calibration');
+const { parseGradingJson } = require('../lib/gradingResponse');
 const express = require('express');
 const multer = require('multer');
 const fs = require('fs');
@@ -553,13 +554,14 @@ async function gradeOne(filePath, assignment, course, skipAlwaysOn=false, origin
 
   const resp = await client.messages.create({
     ...gradingParams(),
-    max_tokens: 2000,
+    // Thinking counts against this, and 2000 left almost nothing for the
+    // grade JSON. Billed on tokens generated, not the ceiling.
+    max_tokens: 16000,
     system: buildGradePrompt(assignment, course, examples, materials, gradeOptions),
     messages: [{ role: 'user', content: gradeMessageContent }]
   });
 
-  const text = resp.content.find(b => b.type === 'text')?.text || '{}';
-  const gradeResult = JSON.parse(text.replace(/```json\n?|```/g, '').trim());
+  const gradeResult = parseGradingJson(resp, 'grade');
 
   // Post-process: replace "the student" with "you" in per-criterion feedback
   if (gradeResult.criteriaFeedback) {
