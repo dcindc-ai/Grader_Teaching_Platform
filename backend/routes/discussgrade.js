@@ -11,6 +11,7 @@ const { parseRubricCsv } = require('../parseRubricCsv');
 const { scrubAiTells, scrubFields } = require('../lib/textVoice');
 const { loadExamplesFor } = require('../lib/calibration');
 const { parseGradingJson } = require('../lib/gradingResponse');
+const { commentPolicySentence } = require('../lib/commentPolicy');
 const { refetchAndStoreRubricCriteria } = require('./canvasimport');
 const router = express.Router();
 
@@ -68,7 +69,11 @@ router.post('/parse-rubric', (req, res) => {
 // ─── Grade a discussion submission against a rubric ───────────────────────
 
 router.post('/grade', async (req, res) => {
-  const { courseId, assignmentId, studentName, discussionQuestion, submission, rubricCriteria: clientRubric, instructorBio, tone, sentences, submissionType, feedbackStyle, syncOnly, manualGrade, screenshotData, attachedFiles } = req.body;
+  // commentMode: 'all' | 'imperfect' | 'none'. The Canvas panel does not send
+  // it today — it applies its dropdown client-side after the response, and can
+  // only clear comments, never add them. So an absent mode means "generate for
+  // every criterion" and let the client subtract; see lib/commentPolicy.js.
+  const { courseId, assignmentId, studentName, discussionQuestion, submission, rubricCriteria: clientRubric, instructorBio, tone, sentences, submissionType, feedbackStyle, commentMode, syncOnly, manualGrade, screenshotData, attachedFiles } = req.body;
 
   // Sync-only mode — save manual Canvas grades back to platform without re-grading
   if (syncOnly && manualGrade && assignmentId && courseId) {
@@ -204,6 +209,7 @@ ${c.ratings.map(r => `  - ${r.name} (${r.points} pts): ${r.description}`).join('
   console.log('[discussgrade] scoring rules:', consistencyOn ? 'ON' : 'OFF',
     '| flag-only loaded:', SCORING_CONSISTENCY_RULE_BANDED.includes('FLAG-ONLY'),
     '| rubric-fidelity loaded:', typeof SCORING_RUBRIC_FIDELITY_RULE === 'string' && SCORING_RUBRIC_FIDELITY_RULE.includes('RUBRIC FIDELITY'));
+  console.log('[discussgrade] comment mode:', commentMode || '(not sent - generating for every criterion)');
 
   // Honor the assignment's strictness dial and target average. Previously this
   // surface ignored both fields, so a "strict" assignment graded no differently
@@ -315,7 +321,7 @@ If something is missing, say it plainly. If something is strong, name exactly wh
   // Skill assessment mode: deeper, more pointed per-criterion feedback
   const criterionCommentInstruction = isSkillAssessment
     ? '2-4 sentences. ' + toneInstructions + COMMENT_SCOPE + ' Be specific and direct: name the exact gap, one concrete way to improve it, and what a stronger version would look like.'
-    : '1-2 sentences. ' + toneInstructions + COMMENT_SCOPE + ' Name one concrete area to improve. Only include if score is not perfect.';
+    : '1-2 sentences. ' + toneInstructions + COMMENT_SCOPE + ' Name one concrete area to improve when there is one. ' + commentPolicySentence(commentMode);
 
   const paragraphInstruction = isSkillAssessment
     ? toneInstructions + ' ' + styleInstruction + ' Write EXACTLY ' + sentenceCount + ' sentences — no more, no fewer. Count them before finalizing. Quote or reference something the student actually wrote. Name the specific intellectual move they made. Be honest about gaps and give a concrete area to improve. End with something forward-looking. Max 20 words per sentence. Address the student as "you" throughout, never by name.'
